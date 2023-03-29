@@ -34,13 +34,10 @@ else:
 
 args = sys.argv
 
-#if not using GlueContext, glue-4.0 works
-spark = SparkSession.builder.getOrCreate()
+spark = SparkSession.builder.config('spark.scheduler.mode', 'FAIR').getOrCreate()
 sc = spark.sparkContext
 log4j = sc._jvm.org.apache.log4j
-# GlueLogger send log to cloudwatch
 logger = log4j.LogManager.getLogger(__name__)
-# logger = log4j.Logger.getLogger("GlueLogger")
 
 
 def load_config(aws_region, config_s3_path):
@@ -63,6 +60,7 @@ if not params:
 
 
 aws_region = params["aws_region"].data
+s3_endpoint = params["s3_endpoint"].data
 checkpoint_location = params["checkpoint_location"].data
 checkpoint_interval = params["checkpoint_interval"].data
 kafka_broker = params["kafka_broker"].data
@@ -111,16 +109,16 @@ def logger_msg(msg):
 
 
 def process_batch(data_frame, batchId):
-    logger.info("process batch id: " + str(batchId) + " record number: " + str(data_frame.count()))
-    if data_frame.count() > 0:
-        dfc = data_frame.cache()
+    dfc = data_frame.cache()
+    logger.info(job_name + " - my_log - process batch id: " + str(batchId) + " record number: " + str(dfc.count()))
+    if not data_frame.rdd.isEmpty() > 0:
         with ThreadPoolExecutor(max_workers=thread_max_workers) as pool:
             futures = []
             for item in sync_table_list:
                 rs = CDCRedshiftSink(spark, cdc_format, redshift_schema, redshift_iam_role, redshift_tmpdir,
                                      logger=logger_msg, disable_dataframe_show=disable_msg, host=redshift_host,
                                      port=redshift_port, database=redshift_database, user=redshift_username,
-                                     password=redshift_password, redshift_secret_id=redshift_secret_id , region_name=aws_region)
+                                     password=redshift_password, redshift_secret_id=redshift_secret_id , region_name=aws_region,s3_endpoint=s3_endpoint)
                 future = pool.submit(rs.run_task, item, dfc)
                 futures.append(future)
             task_list = []
@@ -132,10 +130,10 @@ def process_batch(data_frame, batchId):
                         logger_msg("task error, stop application" + str(task_list))
                         spark.stop()
                         raise Exception("task error, stop application" + str(task_list))
-            logger_msg("task complete " + str(task_list))
+            logger.info(job_name + " - my_log -task complete " + str(task_list))
             pool.shutdown(wait=True)
         dfc.unpersist()
-        logger_msg("finish batch id: " + str(batchId))
+        logger.info(job_name + " - my_log - finish batch id: " + str(batchId))
 
 
 

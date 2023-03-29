@@ -1,6 +1,7 @@
 import sys
 from awsglue.utils import getResolvedOptions
 
+from pyspark.context import SparkConf
 from pyspark.context import SparkContext
 from awsglue.context import GlueContext
 from cdc_util.redshift_sink import CDCRedshiftSink
@@ -34,8 +35,9 @@ params = [
     'config_s3_path',
 ]
 args = getResolvedOptions(sys.argv, params)
+conf = SparkConf().set('spark.scheduler.mode','FAIR')
 
-sc = SparkContext()
+sc = SparkContext(conf=conf)
 glueContext = GlueContext(sc)
 logger = glueContext.get_logger()
 spark = glueContext.spark_session
@@ -70,6 +72,7 @@ if not params:
 job_name = args['JOB_NAME']
 
 aws_region = params["aws_region"].data
+s3_endpoint = params["s3_endpoint"].data
 checkpoint_location = params["checkpoint_location"].data
 checkpoint_interval = params["checkpoint_interval"].data
 kafka_broker = params["kafka_broker"].data
@@ -116,16 +119,16 @@ def logger_msg(msg):
         pass
 
 def process_batch(data_frame, batchId):
-    logger.info("process batch id: " + str(batchId) + " record number: " + str(data_frame.count()))
-    if data_frame.count() > 0:
-        dfc = data_frame.cache()
+    dfc = data_frame.cache()
+    logger.info(job_name + " - my_log - process batch id: " + str(batchId) + " record number: " + str(dfc.count()))
+    if not data_frame.rdd.isEmpty():
         with ThreadPoolExecutor(max_workers=thread_max_workers) as pool:
             futures = []
             for item in sync_table_list:
                 rs = CDCRedshiftSink(spark, cdc_format, redshift_schema, redshift_iam_role, redshift_tmpdir,
                                      logger=logger_msg, disable_dataframe_show=disable_msg, host=redshift_host,
                                      port=redshift_port, database=redshift_database, user=redshift_username,
-                                     password=redshift_password, redshift_secret_id=redshift_secret_id , region_name=aws_region)
+                                     password=redshift_password, redshift_secret_id=redshift_secret_id , region_name=aws_region,s3_endpoint=s3_endpoint)
                 future = pool.submit(rs.run_task, item, dfc)
                 futures.append(future)
             task_list = []
@@ -137,10 +140,10 @@ def process_batch(data_frame, batchId):
                         logger_msg("task error, stop application" + str(task_list))
                         spark.stop()
                         raise Exception("task error, stop application" + str(task_list))
-            logger_msg("task complete " + str(task_list))
+            logger.info(job_name + " - my_log -task complete " + str(task_list))
             pool.shutdown(wait=True)
         dfc.unpersist()
-        logger_msg("finish batch id: " + str(batchId))
+        logger.info(job_name + " - my_log - finish batch id: " + str(batchId))
 
 
 save_to_redshift = source_data \

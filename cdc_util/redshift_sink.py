@@ -13,7 +13,7 @@ import re
 
 
 def gen_filter_udf(db, table, cdc_format):
-    def filter_table(str_json,):
+    def filter_table(str_json, ):
         reg_schema = ""
         reg_table = ""
         if cdc_format == "DMS-CDC":
@@ -36,8 +36,11 @@ def gen_filter_udf(db, table, cdc_format):
 
 
 class CDCRedshiftSink:
-    def __init__(self, spark, cdc_format, redshift_schema, redshift_iam_role, redshift_tmpdir,  logger=None, disable_dataframe_show="false", host: Optional[str] = None, port: Optional[int] = None, database: Optional[str] = None, user: Optional[str] = None,
-                 password: Optional[str] = None, redshift_secret_id: Optional[str] = None, region_name: Optional[str] = None):
+    def __init__(self, spark, cdc_format, redshift_schema, redshift_iam_role, redshift_tmpdir, logger=None,
+                 disable_dataframe_show="false", host: Optional[str] = None, port: Optional[int] = None,
+                 database: Optional[str] = None, user: Optional[str] = None,
+                 password: Optional[str] = None, redshift_secret_id: Optional[str] = None,
+                 region_name: Optional[str] = None, s3_endpoint: Optional[str] = None):
         if logger:
             self.logger = logger
         else:
@@ -46,6 +49,7 @@ class CDCRedshiftSink:
         self.data_frame = None
         self.spark = spark
         self.cdc_format = cdc_format
+        self.s3_endpoint = s3_endpoint
 
         self.redshift_tmpdir = redshift_tmpdir
         self.redshift_iam_role = redshift_iam_role
@@ -55,7 +59,6 @@ class CDCRedshiftSink:
         self.database = database
         self.user = user
         self.password = password
-
 
         self.redshift_schema = redshift_schema
 
@@ -86,7 +89,7 @@ class CDCRedshiftSink:
                 port=int(self.port)
             )
 
-    def _getDFExampleString(self,df):
+    def _getDFExampleString(self, df):
         if self.disable_dataframe_show == "false":
             data_str = df._jdf.showString(5, 20, False)
             # truncate false
@@ -102,8 +105,9 @@ class CDCRedshiftSink:
             res = cursor.fetchall()
             return res
 
-    def _check_table_exists(self,table, schema):
-        sql = "select distinct tablename from pg_table_def where tablename = '{0}' and schemaname='{1}'".format(table, schema)
+    def _check_table_exists(self, table, schema):
+        sql = "select distinct tablename from pg_table_def where tablename = '{0}' and schemaname='{1}'".format(table,
+                                                                                                                schema)
         res = self._run_sql_with_result(sql)
         if not res:
             return False
@@ -123,7 +127,8 @@ class CDCRedshiftSink:
             iud_op_sql = "select * from (select after.*, op as operation, row_number() over (partition by {primary_key} order by ts_ms desc) as seqnum  from {view_name} where (op='u' or op='d' or op='c' or op='r') ) t1 where seqnum=1".format(
                 primary_key=partition_key, view_name="global_temp." + view_name)
         return iud_op_sql
-    def _get_on_sql(self,stage_table,target_table,primary_key):
+
+    def _get_on_sql(self, stage_table, target_table, primary_key):
         on_sql = []
         for pk in primary_key.split(","):
             tmp = "{stage_table}.{join_key} = {target_table}.{join_key}".format(stage_table=stage_table,
@@ -131,8 +136,7 @@ class CDCRedshiftSink:
             on_sql.append(tmp)
         return " and ".join(on_sql)
 
-
-    def _do_write(self, scf, redshift_schema, table_name, primary_key,target_table):
+    def _do_write(self, scf, redshift_schema, table_name, primary_key, target_table):
         if target_table:
             stage_table_name = redshift_schema + "." + "stage_table_" + target_table
             redshift_target_table = redshift_schema + "." + target_table
@@ -156,12 +160,12 @@ class CDCRedshiftSink:
         iud_df_columns = iud_df.columns
         iud_df_columns.remove("operation")
 
-        se = SchemaEvolution(iud_df_columns, iud_df.schema, redshift_schema, table_name, self.logger,host=self.host,port=self.port,database=self.database,user=self.user,password=self.password)
+        se = SchemaEvolution(iud_df_columns, iud_df.schema, redshift_schema, table_name, self.logger, host=self.host,
+                             port=self.port, database=self.database, user=self.user, password=self.password)
         css = se.get_change_schema_sql()
         se.close_conn()
 
         self.logger("stage table dataframe spark write to s3 {0}".format(self._getDFExampleString(iud_df)))
-
 
         # if redshift target table already exists, do not create table
         create_target_table_sql = "create table  {target_table} sortkey ({sortkey}) as select {columns} from {stage_table} where 1=2;".format(
@@ -173,7 +177,7 @@ class CDCRedshiftSink:
         elif self.cdc_format == "FLINK-CDC":
             operation_del_value = "d"
 
-        on_sql = self._get_on_sql(stage_table_name,redshift_target_table,primary_key)
+        on_sql = self._get_on_sql(stage_table_name, redshift_target_table, primary_key)
         transaction_sql = "begin;{scheam_change_sql} delete from {target_table} using {stage_table} where {on_sql}; insert into {target_table}({columns}) select {columns} from {stage_table} where operation!='{operation_del_value}'; drop table {stage_table}; end;".format(
             stage_table=stage_table_name, target_table=redshift_target_table, on_sql=on_sql,
             columns=",".join(iud_df_columns), scheam_change_sql=css, operation_del_value=operation_del_value)
@@ -192,7 +196,8 @@ class CDCRedshiftSink:
             .option("tempdir", self.redshift_tmpdir) \
             .option("postactions", post_query) \
             .option("tempformat", "CSV") \
-            .option("extracopyoptions", "TRUNCATECOLUMNS region 'us-east-1'") \
+            .option("s3_endpoint", self.s3_endpoint) \
+            .option("extracopyoptions", "TRUNCATECOLUMNS region '{0}'".format(self.region_name)) \
             .option("aws_iam_role", self.redshift_iam_role).mode("append").save()
 
     def run_task(self, item, data_frame):
@@ -210,8 +215,8 @@ class CDCRedshiftSink:
             task_status["table_name"] = table_name
 
             fdf = data_frame.filter(gen_filter_udf(db_name, table_name, self.cdc_format)(col('value')))
-            self.logger("the table {0}: record number: {1}".format(table_name, str(fdf.count())))
-            if fdf.count() > 0:
+            # self.logger("the table {0}: record number: {1}".format(table_name, str(fdf.count())))
+            if not fdf.rdd.isEmpty():
                 self.logger("the table {0}:  kafka source data: {1}".format(table_name, self._getDFExampleString(fdf)))
                 # auto gen schema
                 json_schema = self.spark.read.json(fdf.rdd.map(lambda p: str(p["value"]))).schema
@@ -220,7 +225,8 @@ class CDCRedshiftSink:
                 scf = fdf.select(from_json(col("value"), json_schema).alias("kdata")).select("kdata.*")
 
                 self.logger("the table {0}: kafka source data with auto gen schema: {1}".format(table_name,
-                                                                                               self._getDFExampleString(scf)))
+                                                                                                self._getDFExampleString(
+                                                                                                    scf)))
 
                 self._do_write(scf, self.redshift_schema, table_name, primary_key, target_table)
                 self.logger("sync the table complete: " + table_name)
