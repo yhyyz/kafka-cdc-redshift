@@ -3,6 +3,33 @@ Spark Streaming从Kafka中消费Flink CDC数据，多库多表实时同步到Red
 * Glue Streaming Job
 * EMR Serverless Streaming Job
 
+#### Glue Streaming
+* 下载依赖
+```shell
+# 下载依赖的JAR, 上传到S3
+wget https://dxs9dnjebzm6y.cloudfront.net/tmp/emr-spark-redshift-1.0-SNAPSHOT.jar
+wget https://dxs9dnjebzm6y.cloudfront.net/tmp/spark-sql-kafka-offset-committer-1.0.jar
+# cdc_util build成whl,方便再在多个环境中使用,直接执行如下命令build 或者下载build好的
+python3 setup.py bdist_wheel
+wget https://dxs9dnjebzm6y.cloudfront.net/tmp/cdc_util-1.1-py3-none-any.whl
+# 作业运行需要的配置文件放到了在项目的config下，可以参考job-4x.properties，将文件上传到S3,后边配置Glue作业用
+
+
+```
+* Glue job配置
+```shell
+--extra-jars s3://panchao-data/jars/emr-spark-redshift-1.0-SNAPSHOT.jar,s3://panchao-data/tmp/spark-sql-kafka-offset-committer-1.0.jar
+--additional-python-modules  redshift_connector,jproperties,s3://panchao-data/tmp/cdc_util-1.1-py3-none-any.whl
+--aws_region us-east-1
+# 注意这个参数 --conf 直接写后边内容，spark.executor.cores 调成了8，表示一个worker可以同时运行的task是8
+--conf  spark.sql.streaming.streamingQueryListeners=net.heartsavior.spark.KafkaOffsetCommitterListener  --conf spark.executor.cores=8 --conf spark.sql.shuffle.partitions=1  --conf spark.default.parallelism=1 --conf spark.speculation=false
+--config_s3_path  s3://panchao-data/kafka-cdc-redshift/job-4x.properties
+
+# Glue 选择3.x,作业类型选择Spark Streaming作业，worker个数根据同步表的数量和大小选择，Number of retries 可以设置大些。 失败自动重启，且会从checkpoint自动重启
+
+```
+
+
 #### EMR Serverless
 * python lib venv
 ```shell
