@@ -28,8 +28,7 @@ wget https://dxs9dnjebzm6y.cloudfront.net/tmp/cdc_util-1.1-py3-202304140009.whl
 --conf  spark.sql.streaming.streamingQueryListeners=net.heartsavior.spark.KafkaOffsetCommitterListener  --conf spark.executor.cores=8 --conf spark.sql.shuffle.partitions=1  --conf spark.default.parallelism=1 --conf spark.speculation=false
 --config_s3_path  s3://panchao-data/kafka-cdc-redshift/job-4x.properties
 
-# Glue 选择3.x,作业类型选择Spark Streaming作业，worker个数根据同步表的数量和大小选择，Number of retries 可以设置大些。 失败自动重启，且会从checkpoint自动重启
-
+# Glue 选择3.x,作业类型选择Spark Streaming作业，worker个数根据同步表的数量和大小选择，Number of retries 在Streaming作业下可以设置大些，比如100。 失败自动重启，且会从checkpoint自动重启。 
 ```
 
 
