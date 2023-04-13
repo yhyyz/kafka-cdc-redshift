@@ -4,7 +4,7 @@ Spark Streaming从Kafka中消费Flink CDC数据，多库多表实时同步到Red
 * EMR Serverless Streaming Job
 
 #### fix history
-* 20230419 修复指定Redshift非public之外的schema是，执行SQL时没有set search_path造成的异常
+* 20230419 修复指定Redshift非public之外的schema时，执行SQL时没有set search_path造成的异常
 
 #### Glue Streaming
 * 下载依赖
