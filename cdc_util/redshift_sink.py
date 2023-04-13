@@ -99,16 +99,16 @@ class CDCRedshiftSink:
         else:
             return "(disable show dataframe)"
 
-    def _run_sql_with_result(self, sql_str):
+    def _run_sql_with_result(self, sql_str, schema):
         with self.con.cursor() as cursor:
+            cursor.execute("set search_path to '$user', public, {0}".format(schema))
             cursor.execute(sql_str)
             res = cursor.fetchall()
             return res
 
     def _check_table_exists(self, table, schema):
-        sql = "select distinct tablename from pg_table_def where tablename = '{0}' and schemaname='{1}'".format(table,
-                                                                                                                schema)
-        res = self._run_sql_with_result(sql)
+        sql = "select distinct tablename from pg_table_def where tablename = '{0}' and schemaname='{1}'".format(table,                                                                                                        schema)
+        res = self._run_sql_with_result(sql, schema)
         if not res:
             return False
         else:

@@ -68,23 +68,26 @@ class SchemaEvolution:
         else:
             self.has_columns = False
 
-    def _run_sql(self, sql_str):
+    def _run_sql(self, sql_str,schema):
+
         with self.con.cursor() as cursor:
+            cursor.execute("set search_path to '$user', public, {0}".format(schema))
             for sql in sql_str.split(";"):
                 if sql != '':
                     cursor.execute(sql.strip())
             self.con.commit()
 
-    def _run_sql_with_result(self, sql_str):
+    def _run_sql_with_result(self, sql_str,schema):
 
         with self.con.cursor() as cursor:
+            cursor.execute("set search_path to '$user', public, {0}".format(schema))
             cursor.execute(sql_str)
             res = cursor.fetchall()
             return res
 
     def _get_redshift_table_columns(self):
         sql = "select \"column\" from pg_table_def where tablename = '{0}' and schemaname='{1}'".format(self.table, self.redshift_schema)
-        res = self._run_sql_with_result(sql)
+        res = self._run_sql_with_result(sql, self.redshift_schema)
         merge_list = sum(list(res), [])
         if not merge_list:
             return None
@@ -151,11 +154,11 @@ class SchemaEvolution:
         add_list = self._gen_add_col_sql()
         self.logger("schema evolution add columns {0}".format(add_list))
         if add_list:
-            self._run_sql("".join(add_list))
+            self._run_sql("".join(add_list),self.redshift_schema)
         drop_list = self._gen_drop_col_sql()
         self.logger("schema evolution drop columns {0}".format(drop_list))
         if drop_list:
-            self._run_sql("".join(drop_list))
+            self._run_sql("".join(drop_list),self.redshift_schema)
 
     # only get the schema sql that needs to be changed without sending it to redshift server for execution
     def get_change_schema_sql(self):
