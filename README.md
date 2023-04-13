@@ -14,7 +14,8 @@ wget https://dxs9dnjebzm6y.cloudfront.net/tmp/emr-spark-redshift-1.0-SNAPSHOT.ja
 wget https://dxs9dnjebzm6y.cloudfront.net/tmp/spark-sql-kafka-offset-committer-1.0.jar
 # cdc_util build成whl,方便再在多个环境中使用,直接执行如下命令build 或者下载build好的
 python3 setup.py bdist_wheel
-wget https://dxs9dnjebzm6y.cloudfront.net/tmp/cdc_util-1.1-py3-202304140009.whl
+# 编译好的
+wget https://dxs9dnjebzm6y.cloudfront.net/tmp/cdc_util_202304140009-1.1-py3-none-any.whl
 # 作业运行需要的配置文件放到了在项目的config下，可以参考job-4x.properties，将文件上传到S3,后边配置Glue作业用
 
 
