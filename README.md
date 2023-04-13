@@ -3,6 +3,9 @@ Spark Streaming从Kafka中消费Flink CDC数据，多库多表实时同步到Red
 * Glue Streaming Job
 * EMR Serverless Streaming Job
 
+#### fix history
+* 20230419 修复指定Redshift非public之外的schema是，执行SQL时没有set search_path造成的异常
+
 #### Glue Streaming
 * 下载依赖
 ```shell
@@ -11,7 +14,7 @@ wget https://dxs9dnjebzm6y.cloudfront.net/tmp/emr-spark-redshift-1.0-SNAPSHOT.ja
 wget https://dxs9dnjebzm6y.cloudfront.net/tmp/spark-sql-kafka-offset-committer-1.0.jar
 # cdc_util build成whl,方便再在多个环境中使用,直接执行如下命令build 或者下载build好的
 python3 setup.py bdist_wheel
-wget https://dxs9dnjebzm6y.cloudfront.net/tmp/cdc_util-1.1-py3-none-any.whl
+wget https://dxs9dnjebzm6y.cloudfront.net/tmp/cdc_util-1.1-py3-202304140009.whl
 # 作业运行需要的配置文件放到了在项目的config下，可以参考job-4x.properties，将文件上传到S3,后边配置Glue作业用
 
 
