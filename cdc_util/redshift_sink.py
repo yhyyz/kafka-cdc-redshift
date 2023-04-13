@@ -126,6 +126,11 @@ class CDCRedshiftSink:
             partition_key = ",".join(["after." + pk for pk in primary_key.split(",")])
             iud_op_sql = "select * from (select after.*, op as operation, row_number() over (partition by {primary_key} order by ts_ms desc) as seqnum  from {view_name} where (op='u' or op='d' or op='c' or op='r') ) t1 where seqnum=1".format(
                 primary_key=partition_key, view_name="global_temp." + view_name)
+        # elif self.cdc_format == "MSK-DEBEZIUM-CDC":
+        #     partition_key = ",".join(["after." + pk for pk in primary_key.split(",")])
+        #     iud_op_sql = "select * from (select after.*, op as operation, row_number() over (partition by {primary_key} order by ts_ms desc) as seqnum  from {view_name} where (op='u' or op='d' or op='c' or op='r') ) t1 where seqnum=1".format(
+        #         primary_key=partition_key, view_name="global_temp." + view_name)
+
         return iud_op_sql
 
     def _get_on_sql(self, stage_table, target_table, primary_key):
