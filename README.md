@@ -3,6 +3,13 @@ Spark Streaming从Kafka中消费Flink CDC数据，多库多表实时同步到Red
 * Glue Streaming Job
 * EMR Serverless Streaming Job
 
+```markdown
+MySQL Flink CDC到Kafka有三种方式：
+* Flink CDC(KDA 部署): https://github.com/yhyyz/kafka-cdc-redshift
+* MSK Connector Debezium 托管服务，无需代码，AWS中国区暂时没有托管的MSK Connector
+* DMS 托管服务，不需要写代码
+```
+
 #### feature
 ```markdown
 1. 多线程并行写多表, 支持insert, update，delete，秒级别延迟
@@ -89,7 +96,7 @@ aws emr-serverless start-job-run \
     }'
 ```
 
-#### CDC格式样例
+#### MySQL CDC格式样例
 ```json
 // flink debezium  cdc 和 mak connector debezium cdc,两者格式一样
 {
