@@ -13,18 +13,6 @@ from urllib.parse import urlparse
 from io import StringIO
 
 """
-glue params:
-    --aws_region  eg. us-east-1
-    --config_s3_path eg. s3://panchao-data/kafka-cdc-redshift/job.properties
-                job.properties example : https://dxs9dnjebzm6y.cloudfront.net/tmp/job.properties
-    --extra-jars  eg. s3://panchao-data/jars/emr-spark-redshift-1.0-SNAPSHOT.jar,s3://panchao-data/tmp/spark-sql-kafka-offset-committer-1.0.jar
-                bundle jar download : https://dxs9dnjebzm6y.cloudfront.net/tmp/emr-spark-redshift-1.0-SNAPSHOT.jar
-                offset committer jar: https://dxs9dnjebzm6y.cloudfront.net/tmp/spark-sql-kafka-offset-committer-1.0.jar
-    --additional-python-modules redshift_connector,jproperties,s3://panchao-data/tmp/cdc_util-1.1-py3-none-any.whl
-                cdc util whl download: https://dxs9dnjebzm6y.cloudfront.net/tmp/cdc_util-1.1-py3-none-any.whl
-    --conf  spark.sql.streaming.streamingQueryListeners=net.heartsavior.spark.KafkaOffsetCommitterListener 
-            --conf spark.executor.cores=10 --conf spark.sql.shuffle.partitions=2  --conf spark.default.parallelism=2
-    
 if need to restart job and consume data from kafka earliest, please rm checkpoint dir 
 which define in job.properties, otherwise job restart from checkpoint
 """

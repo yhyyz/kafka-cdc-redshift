@@ -3,8 +3,17 @@ Spark Streaming从Kafka中消费Flink CDC数据，多库多表实时同步到Red
 * Glue Streaming Job
 * EMR Serverless Streaming Job
 
-#### fix history
-* 20230419 修复指定Redshift非public之外的schema时，执行SQL时没有set search_path造成的异常
+#### feature
+```markdown
+1. 多线程并行写多表, 支持insert, update，delete，秒级别延迟
+2. Schema自动变更支持，增加列，删除列，修改列的长度，修改列类型(other->string,不支持string->other)
+3. 从MSK(Kafka)接CDC，链路更稳定，上下游解耦，方便做数据回溯
+4. Full Load阶段可以根据数据量调整资源快速加载
+```
+
+#### update history
+* 20230415 支持MSK Connector Debezium CDC 数据格式，截止目前，支持Flink CDC(Debezium),MSK Connector, DMS三种CDC数据格式,Flink CDC和MSK Connector都是Debezium格式
+* 20230414 修复指定Redshift非public之外的schema时，执行SQL时没有set search_path造成的异常
 
 #### Glue Streaming
 * 下载依赖
@@ -15,7 +24,7 @@ wget https://dxs9dnjebzm6y.cloudfront.net/tmp/spark-sql-kafka-offset-committer-1
 # cdc_util build成whl,方便再在多个环境中使用,直接执行如下命令build 或者下载build好的
 python3 setup.py bdist_wheel
 # 编译好的
-wget https://dxs9dnjebzm6y.cloudfront.net/tmp/cdc_util_202304140009-1.1-py3-none-any.whl
+https://dxs9dnjebzm6y.cloudfront.net/tmp/cdc_util_202304151934-1.1-py3-none-any.whl
 # 作业运行需要的配置文件放到了在项目的config下，可以参考job-4x.properties，将文件上传到S3,后边配置Glue作业用
 
 
@@ -32,7 +41,6 @@ wget https://dxs9dnjebzm6y.cloudfront.net/tmp/cdc_util_202304140009-1.1-py3-none
 # Glue 选择3.x,作业类型选择Spark Streaming作业，worker个数根据同步表的数量和大小选择，Number of retries 在Streaming作业下可以设置大些，比如100。 失败自动重启，且会从checkpoint自动重启。 
 ```
 
-
 #### EMR Serverless
 * python lib venv
 ```shell
@@ -43,8 +51,8 @@ source cdc_venv/bin/activate
 pip3 install --upgrade pip
 pip3 install redshift_connector jproperties
 # cdc_util是封装好的Spark CDC Redshift 的包，源代码在cdc_util中
-wget https://dxs9dnjebzm6y.cloudfront.net/tmp/cdc_util-1.1-py3-none-any.whl
-pip3 install cdc_util-1.1-py3-none-any.whl
+https://dxs9dnjebzm6y.cloudfront.net/tmp/cdc_util_202304151934-1.1-py3-none-any.whl
+pip3 install cdc_util_202304151934-1.1-py3-none-any.whl
 
 pip3 install venv-pack
 venv-pack -f -o cdc_venv.tar.gz

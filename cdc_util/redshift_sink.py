@@ -19,7 +19,7 @@ def gen_filter_udf(db, table, cdc_format):
         if cdc_format == "DMS-CDC":
             reg_schema = '"schema-name":"{0}"'.format(db)
             reg_table = '"table-name":"{0}"'.format(table)
-        elif cdc_format == "FLINK-CDC":
+        elif cdc_format == "FLINK-CDC" or cdc_format == "MSK-DEBEZIUM-CDC":
             reg_schema = '"db":"{0}"'.format(db)
             reg_table = '"table":"{0}"'.format(table)
         schema_pattern = re.compile(reg_schema)
@@ -33,6 +33,21 @@ def gen_filter_udf(db, table, cdc_format):
         # return '"schema-name":"{0}"'.format(db) in str_json and '"table-name":"{0}"'.format(table) in str_json
 
     return udf(filter_table, BooleanType())
+
+
+def change_cdc_format_udf(cdc_format):
+    def change_cdc_format(str_json, ):
+        res_str_json = str_json
+        if cdc_format == "FLINK-CDC" or cdc_format == "MSK-DEBEZIUM-CDC":
+            match_op = re.search(r'"op":"(.*?)"', str_json)
+            op_value = match_op.group(1)
+            if op_value == "d":
+                res_str_json = re.sub(r'"before":(.*?),"after":null',
+                                      lambda
+                                          match_data: f'"before":{match_data.group(1)},"after":{match_data.group(1)}',
+                                      str_json)
+        return res_str_json
+    return udf(change_cdc_format, StringType())
 
 
 class CDCRedshiftSink:
@@ -107,7 +122,8 @@ class CDCRedshiftSink:
             return res
 
     def _check_table_exists(self, table, schema):
-        sql = "select distinct tablename from pg_table_def where tablename = '{0}' and schemaname='{1}'".format(table,                                                                                                        schema)
+        sql = "select distinct tablename from pg_table_def where tablename = '{0}' and schemaname='{1}'".format(table,
+                                                                                                                schema)
         res = self._run_sql_with_result(sql, schema)
         if not res:
             return False
@@ -122,7 +138,7 @@ class CDCRedshiftSink:
             partition_key = ",".join(["data." + pk for pk in primary_key.split(",")])
             iud_op_sql = "select * from (select data.*, metadata.operation as operation, row_number() over (partition by {primary_key} order by metadata.timestamp desc) as seqnum  from {view_name} where (metadata.operation='load' or metadata.operation='delete' or metadata.operation='insert' or metadata.operation='update') and  metadata.`record-type`!='control' and metadata.`record-type`='data') t1 where seqnum=1".format(
                 primary_key=partition_key, view_name="global_temp." + view_name)
-        elif self.cdc_format == "FLINK-CDC":
+        elif self.cdc_format == "FLINK-CDC" or self.cdc_format == "MSK-DEBEZIUM-CDC":
             partition_key = ",".join(["after." + pk for pk in primary_key.split(",")])
             iud_op_sql = "select * from (select after.*, op as operation, row_number() over (partition by {primary_key} order by ts_ms desc) as seqnum  from {view_name} where (op='u' or op='d' or op='c' or op='r') ) t1 where seqnum=1".format(
                 primary_key=partition_key, view_name="global_temp." + view_name)
@@ -173,13 +189,13 @@ class CDCRedshiftSink:
         self.logger("stage table dataframe spark write to s3 {0}".format(self._getDFExampleString(iud_df)))
 
         # if redshift target table already exists, do not create table
-        create_target_table_sql = "create table  {target_table} sortkey ({sortkey}) as select {columns} from {stage_table} where 1=2;".format(
+        create_target_table_sql = "create table  {target_table} sortkey ({sortkey}) as select {columns} from {stage_table} where 1=3;".format(
             stage_table=stage_table_name, target_table=redshift_target_table, columns=",".join(iud_df_columns),
             sortkey=primary_key)
         operation_del_value = ""
         if self.cdc_format == "DMS-CDC":
             operation_del_value = "delete"
-        elif self.cdc_format == "FLINK-CDC":
+        elif self.cdc_format == "FLINK-CDC" or self.cdc_format == "MSK-DEBEZIUM-CDC":
             operation_del_value = "d"
 
         on_sql = self._get_on_sql(stage_table_name, redshift_target_table, primary_key)
@@ -219,7 +235,8 @@ class CDCRedshiftSink:
 
             task_status["table_name"] = table_name
 
-            fdf = data_frame.filter(gen_filter_udf(db_name, table_name, self.cdc_format)(col('value')))
+            df = data_frame.filter(gen_filter_udf(db_name, table_name, self.cdc_format)(col('value')))
+            fdf = df.select(change_cdc_format_udf(self.cdc_format)(col('value')).alias("value"))
             # self.logger("the table {0}: record number: {1}".format(table_name, str(fdf.count())))
             if not fdf.rdd.isEmpty():
                 self.logger("the table {0}:  kafka source data: {1}".format(table_name, self._getDFExampleString(fdf)))
