@@ -88,3 +88,63 @@ aws emr-serverless start-job-run \
         }
     }'
 ```
+
+#### CDC格式样例
+```json
+// flink debezium  cdc 和 mak connector debezium cdc,两者格式一样
+{
+  "before": {
+    "id": 19770,
+    "k": 4996,
+    "c": "36318400304-63111352071-68840643492-77717971110-29599028240-56080607483-01147782222-68426958377-82107614964-35141906795",
+    "pad": "85969145563-90374725884-50995688213-61744612362-32329632183"
+  },
+  "after": {
+    "id": 19770,
+    "k": 4997,
+    "c": "36318400304-63111352071-68840643492-77717971110-29599028240-56080607483-01147782222-68426958377-82107614964-35141906795",
+    "pad": "85969145563-90374725884-50995688213-61744612362-32329632183"
+  },
+  "source": {
+    "version": "1.6.4.Final",
+    "connector": "mysql",
+    "name": "mysql_binlog_source",
+    "ts_ms": 1681561501000,
+    "snapshot": "false",
+    "db": "cdc_db_02",
+    "sequence": null,
+    "table": "sbtest19",
+    "server_id": 57330068,
+    "gtid": null,
+    "file": "mysql-bin-changelog.050156",
+    "pos": 5865,
+    "row": 0,
+    "thread": null,
+    "query": null
+  },
+  "op": "u",
+  "ts_ms": 1681561501093,
+  "transaction": null
+}
+// dms data
+{
+  "data": {
+    "pid": 2,
+    "pname": "prodcut-002",
+    "pprice": 110,
+    "create_time": "2023-02-13T22:16:38Z",
+    "modify_time": "2023-04-15T08:38:10Z",
+    "pdesc": "bbbbbbbbbbba"
+  },
+  "metadata": {
+    "timestamp": "2023-04-15T12:38:13.780065Z",
+    "record-type": "data",
+    "operation": "update",
+    "partition-key-type": "primary-key",
+    "partition-key-value": "test_db.product.2",
+    "schema-name": "test_db",
+    "table-name": "product",
+    "transaction-id": 215426970434175
+  }
+}
+```
