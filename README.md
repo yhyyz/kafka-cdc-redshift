@@ -2,6 +2,7 @@
 Spark Streaming从Kafka中消费Flink CDC数据，多库多表实时同步到Redshift.当前支持
 * Glue Streaming Job
 * EMR Serverless Streaming Job
+![](https://pcmyp.oss-cn-beijing.aliyuncs.com/markdown/202304152140030.png)
 
 ```markdown
 MySQL Flink CDC到Kafka有三种方式：
