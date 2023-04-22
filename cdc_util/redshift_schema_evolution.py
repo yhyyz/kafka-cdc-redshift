@@ -94,6 +94,59 @@ class SchemaEvolution:
         else:
             return merge_list
 
+    def _get_redshift_table_columns_with_type(self):
+        sql = "select \"column\", \"type\" from pg_table_def where tablename = '{0}' and schemaname='{1}'".format(
+            self.table, self.redshift_schema)
+        res = self._run_sql_with_result(sql, self.redshift_schema)
+        columns_with_type_list = []
+        for item in res:
+            columns_with_type_dict = {}
+            name = item[0]
+            data_type = item[1]
+            cast_type = True
+            if "timestamp" in data_type:
+                data_type = "timestamp"
+            elif "character" in data_type and "varying" in data_type:
+                data_type = "varchar{0}".format(data_type.split("varying")[1])
+            elif "character(" in data_type:
+                data_type = "varchar{0}".format(data_type.split("character")[1])
+            elif "boolean" in data_type:
+                data_type = "boolean"
+            elif "date" in data_type:
+                data_type = "date"
+            elif "double precision" in data_type:
+                data_type = "float8"
+            elif "numeric" in data_type:
+                data_type = "numeric".format(data_type.split("numeric")[1])
+            elif "real" in data_type:
+                data_type = "float4"
+            elif "integer" in data_type:
+                data_type = "int4"
+            elif "bigint" in data_type:
+                data_type = "int8"
+            else:
+                cast_type = False
+            columns_with_type_dict["col_name"] = name
+            columns_with_type_dict["data_type"] = data_type
+            columns_with_type_dict["cast"] = cast_type
+            columns_with_type_list.append(columns_with_type_dict)
+        return columns_with_type_list
+
+    def get_columns_with_cast_type_from_redshift(self):
+        col_list = self._get_redshift_table_columns_with_type()
+        insert_sql_columns = []
+        select_sql_columns_with_cast_type = []
+        for item in col_list:
+            col_name = item["col_name"]
+            data_type = item["data_type"]
+            cast = item["cast"]
+            insert_sql_columns.append(col_name)
+            from_column = col_name
+            if cast:
+                from_column = col_name+"::"+data_type
+            select_sql_columns_with_cast_type.append(from_column)
+        return insert_sql_columns, select_sql_columns_with_cast_type
+
     def _field_string(self, field):
         type_mapping = {
             IntegerType(): "INTEGER",

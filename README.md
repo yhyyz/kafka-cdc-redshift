@@ -17,9 +17,19 @@ MySQL Flink CDC到Kafka有三种方式：
 2. Schema自动变更支持，增加列，删除列，修改列的长度，修改列类型(other->string,不支持string->other)
 3. 从MSK(Kafka)接CDC，链路更稳定，上下游解耦，方便做数据回溯
 4. Full Load阶段可以根据数据量调整资源快速加载
+5. 支持忽略DDL模式,用户自己控制建表和Schema变更
 ```
 
 #### update history
+* 20230422 添加忽略Schema变更的支持，可以在配置中设置ignore_ddl=true, 如果设置之后，不会帮用户自动创建表，需要用户自己预先创建表，同样不会自动添加删除列，源端变更需要用户自己处理。
+```markdown
+# 例如在job properties中配置如下
+sync_table_list = [\
+{"db": "test_db", "table": "product", "primary_key": "pid","ignore_ddl":"true"},\  # 忽略ddl变更，表需要用户自己创建，创建表名如果不配置，请用源端的表名字创建redshift表
+{"db": "test_db", "table": "product", "primary_key": "pid","ignore_ddl":"true","target_table":"t_product"},\  # 忽略ddl变更，表需要用户自己创建，target_table配置自己在Redshift创建的表名称
+{"db": "test_db", "table": "user", "primary_key": "id"}\ # 自动创建表，自动schema变更
+]
+```
 * 20230415 支持MSK Connector Debezium CDC 数据格式，截止目前，支持Flink CDC(Debezium),MSK Connector, DMS三种CDC数据格式,Flink CDC和MSK Connector都是Debezium格式
 * 20230414 修复指定Redshift非public之外的schema时，执行SQL时没有set search_path造成的异常
 
@@ -32,7 +42,7 @@ wget https://dxs9dnjebzm6y.cloudfront.net/tmp/spark-sql-kafka-offset-committer-1
 # cdc_util build成whl,方便再在多个环境中使用,直接执行如下命令build 或者下载build好的
 python3 setup.py bdist_wheel
 # 编译好的
-https://dxs9dnjebzm6y.cloudfront.net/tmp/cdc_util_202304151934-1.1-py3-none-any.whl
+https://dxs9dnjebzm6y.cloudfront.net/tmp/cdc_util_202304221853-1.1-py3-none-any.whl
 # 作业运行需要的配置文件放到了在项目的config下，可以参考job-4x.properties，将文件上传到S3,后边配置Glue作业用
 
 
