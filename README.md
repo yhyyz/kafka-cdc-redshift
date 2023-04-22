@@ -6,7 +6,7 @@ Spark Streaming从Kafka中消费Flink CDC数据，多库多表实时同步到Red
 
 ```markdown
 MySQL Flink CDC到Kafka有三种方式：
-* Flink CDC(KDA 部署): https://github.com/yhyyz/kafka-cdc-redshift
+* Flink CDC(KDA 部署): https://github.com/yhyyz/flink-cdc-msk
 * MSK Connector Debezium 托管服务，无需代码，AWS中国区暂时没有托管的MSK Connector
 * DMS 托管服务，不需要写代码
 ```
