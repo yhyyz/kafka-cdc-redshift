@@ -23,12 +23,12 @@ MySQL Flink CDC到Kafka有三种方式：
 #### update history
 * 20230425 支持delete数据单独写到一张表，表名自动以_delete结尾, 支持只同步delete数据，不同步原表数据，表名字自动以_delete结尾，配置例子如下
     ```markdown
-        # save_delete设置为true，表示同步原表同时，将delete数据单独写一张表
-        # only_save_delete设置为true,表示只同步delete数据，不同步原表数据
-        sync_table_list = [\
-        {"db": "test_db", "table": "product", "primary_key": "pid","ignore_ddl":"true","save_delete":"true"},\    # 忽略ddl变更，表需要用户自己创建，创建表名如果不配置，请用源端的表名字创建redshift表
-        {"db": "test_db", "table": "user", "primary_key": "id","only_save_delete":"true"}\
-        ]
+    # save_delete设置为true，表示同步原表同时，将delete数据单独写一张表
+    # only_save_delete设置为true,表示只同步delete数据，不同步原表数据
+    sync_table_list = [\
+    {"db": "test_db", "table": "product", "primary_key": "pid","ignore_ddl":"true","save_delete":"true"},\    # 忽略ddl变更，表需要用户自己创建，创建表名如果不配置，请用源端的表名字创建redshift表
+    {"db": "test_db", "table": "user", "primary_key": "id","only_save_delete":"true"}\
+    ]
     ```
 * 20230422 添加忽略Schema变更的支持，可以在配置中设置ignore_ddl=true, 如果设置之后，不会帮用户自动创建表，需要用户自己预先创建表，同样不会自动添加删除列，源端变更需要用户自己处理。
     ```markdown
