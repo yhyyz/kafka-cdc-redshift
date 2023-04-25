@@ -117,7 +117,7 @@ class SchemaEvolution:
             elif "double precision" in data_type:
                 data_type = "float8"
             elif "numeric" in data_type:
-                data_type = "numeric".format(data_type.split("numeric")[1])
+                data_type = "numeric{0}".format(data_type.split("numeric")[1])
             elif "real" in data_type:
                 data_type = "float4"
             elif "integer" in data_type:
