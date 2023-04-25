@@ -142,13 +142,21 @@ class CDCRedshiftSink:
             partition_key = ",".join(["after." + pk for pk in primary_key.split(",")])
             iud_op_sql = "select * from (select after.*, op as operation, row_number() over (partition by {primary_key} order by ts_ms desc) as seqnum  from {view_name} where (op='u' or op='d' or op='c' or op='r') ) t1 where seqnum=1".format(
                 primary_key=partition_key, view_name="global_temp." + view_name)
-        # elif self.cdc_format == "MSK-DEBEZIUM-CDC":
-        #     partition_key = ",".join(["after." + pk for pk in primary_key.split(",")])
-        #     iud_op_sql = "select * from (select after.*, op as operation, row_number() over (partition by {primary_key} order by ts_ms desc) as seqnum  from {view_name} where (op='u' or op='d' or op='c' or op='r') ) t1 where seqnum=1".format(
-        #         primary_key=partition_key, view_name="global_temp." + view_name)
 
         return iud_op_sql
 
+    def _get_cdc_sql_delete_from_view(self, view_name, primary_key):
+        d_op_sql = ""
+        if self.cdc_format == "DMS-CDC":
+            partition_key = ",".join(["data." + pk for pk in primary_key.split(",")])
+            d_op_sql = "select * from (select data.*, metadata.operation as operation, row_number() over (partition by {primary_key} order by metadata.timestamp desc) as seqnum  from {view_name} where (metadata.operation='delete') and  metadata.`record-type`!='control' and metadata.`record-type`='data') t1 where seqnum=1".format(
+                primary_key=partition_key, view_name="global_temp." + view_name)
+        elif self.cdc_format == "FLINK-CDC" or self.cdc_format == "MSK-DEBEZIUM-CDC":
+            partition_key = ",".join(["after." + pk for pk in primary_key.split(",")])
+            d_op_sql = "select * from (select after.*, op as operation, row_number() over (partition by {primary_key} order by ts_ms desc) as seqnum  from {view_name} where (op='d') ) t1 where seqnum=1".format(
+                primary_key=partition_key, view_name="global_temp." + view_name)
+
+        return d_op_sql
     def _get_on_sql(self, stage_table, target_table, primary_key):
         on_sql = []
         for pk in primary_key.split(","):
@@ -157,20 +165,80 @@ class CDCRedshiftSink:
             on_sql.append(tmp)
         return " and ".join(on_sql)
 
-    def _do_write(self, scf, redshift_schema, table_name, primary_key, target_table, ignore_ddl):
+    def _do_write_delete(self, scf, redshift_schema, table_name, primary_key, target_table, ignore_ddl):
         if target_table:
+            target_table = target_table+"_delete"
             stage_table_name = redshift_schema + "." + "stage_table_" + target_table
             redshift_target_table = redshift_schema + "." + target_table
+            redshift_target_table_without_schema = target_table
         else:
+            table_name = table_name+"_delete"
             stage_table_name = redshift_schema + "." + "stage_table_" + table_name
             redshift_target_table = redshift_schema + "." + table_name
+            redshift_target_table_without_schema = table_name
 
         view_name = "kafka_source_" + table_name
         scf.createOrReplaceGlobalTempView(view_name)
 
-        # row_number order by metadata.timestamp get top 1, Merge the same primary key data in a batch, reduce copying to redshift data
-        # iud_op = "select * from (select data.*, metadata.operation as operation, row_number() over (partition by {primary_key} order by metadata.timestamp desc) as seqnum  from {view_name} where (metadata.operation='load' or metadata.operation='delete' or metadata.operation='insert' or metadata.operation='update') and  metadata.`record-type`!='control' and metadata.`record-type`='data') t1 where seqnum=1".format(
-        #     primary_key="data." + primary_key, view_name="global_temp." + view_name)
+        d_op = self._get_cdc_sql_delete_from_view(view_name, primary_key=primary_key)
+        self.logger("d operation(delete) sql:" + d_op)
+        cols_to_drop = ['seqnum']
+        d_df = self.spark.sql(d_op).drop(*cols_to_drop)
+        self.logger("stage table delete operate dataframe spark write to s3 {0}".format(self._getDFExampleString(d_df)))
+        d_df_columns = d_df.columns
+        d_df_columns.remove("operation")
+        on_sql = self._get_on_sql(stage_table_name, redshift_target_table, primary_key)
+        se = SchemaEvolution(d_df_columns, d_df.schema, redshift_schema, redshift_target_table_without_schema, self.logger, host=self.host,
+                             port=self.port, database=self.database, user=self.user, password=self.password)
+        if ignore_ddl and ignore_ddl == "true":
+            insert_sql_columns, select_sql_columns_with_cast_type = se.get_columns_with_cast_type_from_redshift()
+            transaction_sql = "begin; delete from {target_table} using {stage_table} where {on_sql}; insert into {target_table}({insert_columns}) select {select_columns} from {stage_table}; drop table {stage_table}; end;".format(
+                stage_table=stage_table_name, target_table=redshift_target_table, on_sql=on_sql,
+                insert_columns=",".join(insert_sql_columns), select_columns=",".join(select_sql_columns_with_cast_type))
+            if self._check_table_exists(redshift_target_table_without_schema, redshift_schema):
+                post_query = transaction_sql
+            else:
+                raise Exception(
+                    "you set ignore_ddl=true but the redshift table not exists: " + str(redshift_target_table))
+        else:
+            css = se.get_change_schema_sql()
+            se.close_conn()
+            create_target_table_sql = "create table  {target_table} sortkey ({sortkey}) as select {columns} from {stage_table} where 1=3;".format(
+                stage_table=stage_table_name, target_table=redshift_target_table, columns=",".join(d_df_columns),
+                sortkey=primary_key)
+            transaction_sql = "begin;{scheam_change_sql} delete from {target_table} using {stage_table} where {on_sql}; insert into {target_table}({columns}) select {columns} from {stage_table}; drop table {stage_table}; end;".format(
+                stage_table=stage_table_name, target_table=redshift_target_table, on_sql=on_sql,
+                columns=",".join(d_df_columns), scheam_change_sql=css)
+            if self._check_table_exists(redshift_target_table_without_schema, redshift_schema):
+                post_query = transaction_sql
+            else:
+                post_query = transaction_sql.replace("begin;", "begin; {0}".format(create_target_table_sql))
+
+        self.logger("spark redshift jdbc transaction sql(save delete data) after copy stage table : " + post_query)
+        d_df.write \
+            .format("io.github.spark_redshift_community.spark.redshift") \
+            .option("url", "jdbc:redshift://{0}:{1}/{2}".format(self.host, self.port, self.database)) \
+            .option("dbtable", stage_table_name) \
+            .option("user", self.user) \
+            .option("password", self.password) \
+            .option("tempdir", self.redshift_tmpdir) \
+            .option("postactions", post_query) \
+            .option("tempformat", "CSV") \
+            .option("s3_endpoint", self.s3_endpoint) \
+            .option("extracopyoptions", "TRUNCATECOLUMNS region '{0}'".format(self.region_name)) \
+            .option("aws_iam_role", self.redshift_iam_role).mode("append").save()
+
+    def _do_write(self, scf, redshift_schema, table_name, primary_key, target_table, ignore_ddl):
+        if target_table:
+            stage_table_name = redshift_schema + "." + "stage_table_" + target_table
+            redshift_target_table = redshift_schema + "." + target_table
+            redshift_target_table_without_schema = target_table
+        else:
+            stage_table_name = redshift_schema + "." + "stage_table_" + table_name
+            redshift_target_table = redshift_schema + "." + table_name
+            redshift_target_table_without_schema = table_name
+        view_name = "kafka_source_" + table_name
+        scf.createOrReplaceGlobalTempView(view_name)
 
         iud_op = self._get_cdc_sql_from_view(view_name, primary_key=primary_key)
 
@@ -189,14 +257,14 @@ class CDCRedshiftSink:
             operation_del_value = "d"
         on_sql = self._get_on_sql(stage_table_name, redshift_target_table, primary_key)
 
-        se = SchemaEvolution(iud_df_columns, iud_df.schema, redshift_schema, table_name, self.logger, host=self.host,
+        se = SchemaEvolution(iud_df_columns, iud_df.schema, redshift_schema, redshift_target_table_without_schema, self.logger, host=self.host,
                              port=self.port, database=self.database, user=self.user, password=self.password)
         if ignore_ddl and ignore_ddl == "true":
             insert_sql_columns,select_sql_columns_with_cast_type = se.get_columns_with_cast_type_from_redshift()
             transaction_sql = "begin; delete from {target_table} using {stage_table} where {on_sql}; insert into {target_table}({insert_columns}) select {select_columns} from {stage_table} where operation!='{operation_del_value}'; drop table {stage_table}; end;".format(
                 stage_table=stage_table_name, target_table=redshift_target_table, on_sql=on_sql,
                 insert_columns=",".join(insert_sql_columns), select_columns=",".join(select_sql_columns_with_cast_type), operation_del_value=operation_del_value)
-            if self._check_table_exists(table_name, redshift_schema):
+            if self._check_table_exists(redshift_target_table_without_schema, redshift_schema):
                 post_query = transaction_sql
             else:
                 raise Exception("you set ignore_ddl=true but the redshift table not exists: " + str(redshift_target_table))
@@ -210,7 +278,7 @@ class CDCRedshiftSink:
             transaction_sql = "begin;{scheam_change_sql} delete from {target_table} using {stage_table} where {on_sql}; insert into {target_table}({columns}) select {columns} from {stage_table} where operation!='{operation_del_value}'; drop table {stage_table}; end;".format(
                 stage_table=stage_table_name, target_table=redshift_target_table, on_sql=on_sql,
                 columns=",".join(iud_df_columns), scheam_change_sql=css, operation_del_value=operation_del_value)
-            if self._check_table_exists(table_name, redshift_schema):
+            if self._check_table_exists(redshift_target_table_without_schema, redshift_schema):
                 post_query = transaction_sql
             else:
                 post_query = transaction_sql.replace("begin;", "begin; {0}".format(create_target_table_sql))
@@ -238,10 +306,17 @@ class CDCRedshiftSink:
             primary_key = item["primary_key"]
             target_table = ""
             ignore_ddl = ""
+            save_delete = ""
+            only_save_delete = ""
             if "target_table" in item:
                 target_table = item["target_table"]
             if "ignore_ddl" in item:
                 ignore_ddl = item["ignore_ddl"]
+            if "save_delete" in item:
+                save_delete = item["save_delete"]
+            if "only_save_delete" in item:
+                only_save_delete = item["only_save_delete"]
+
             # target_table = redshift_schema + "." + table_name
 
             task_status["table_name"] = table_name
@@ -260,8 +335,12 @@ class CDCRedshiftSink:
                 self.logger("the table {0}: kafka source data with auto gen schema: {1}".format(table_name,
                                                                                                 self._getDFExampleString(
                                                                                                     scf)))
-
-                self._do_write(scf, self.redshift_schema, table_name, primary_key, target_table,ignore_ddl)
+                if only_save_delete == "true":
+                    self._do_write_delete(scf, self.redshift_schema, table_name, primary_key, target_table, ignore_ddl)
+                else:
+                    self._do_write(scf, self.redshift_schema, table_name, primary_key, target_table,ignore_ddl)
+                    if save_delete == "true":
+                        self._do_write_delete(scf, self.redshift_schema, table_name, primary_key, target_table, ignore_ddl)
                 self.logger("sync the table complete: " + table_name)
                 task_status["status"] = "finished"
                 return task_status
