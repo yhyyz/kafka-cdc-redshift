@@ -18,9 +18,18 @@ MySQL Flink CDC到Kafka有三种方式：
     3. 从MSK(Kafka)接CDC，链路更稳定，上下游解耦，方便做数据回溯
     4. Full Load阶段可以根据数据量调整资源快速加载
     5. 支持忽略DDL模式,用户自己控制建表和Schema变更
+    6. 支持json字符串列存储为Redshift Super类型
     ```
 
 #### update history
+* 20230511 支持将json字符串列存储为super字段
+   ```markdown
+    # 如果mysql中字段内容为json字符串，可以将其存储为Redshift的super方便解析，同时super长度可以支持最大1MB的，16MB(预览版)，super_columns添加需要存储为super的列名字即可
+    sync_table_list = [\
+    {"db": "test_db", "table": "product", "primary_key": "pid","super_columns":"info,pdesc"}\
+    ]
+    ```
+
 * 20230425 支持delete数据单独写到一张表，表名自动以_delete结尾, 支持只同步delete数据，不同步原表数据，表名字自动以_delete结尾，配置例子如下
     ```markdown
     # save_delete设置为true，表示同步原表同时，将delete数据单独写一张表
@@ -46,19 +55,19 @@ MySQL Flink CDC到Kafka有三种方式：
 * 下载依赖
 ```shell
 # 下载依赖的JAR, 上传到S3
-wget https://dxs9dnjebzm6y.cloudfront.net/tmp/emr-spark-redshift-1.0-SNAPSHOT.jar
+wget https://dxs9dnjebzm6y.cloudfront.net/tmp/emr-spark-redshift-1.1-SNAPSHOT.jar
 wget https://dxs9dnjebzm6y.cloudfront.net/tmp/spark-sql-kafka-offset-committer-1.0.jar
 # cdc_util build成whl,方便再在多个环境中使用,直接执行如下命令build 或者下载build好的
 python3 setup.py bdist_wheel
 # 编译好的
-https://dxs9dnjebzm6y.cloudfront.net/tmp/cdc_util_202304251252-1.1-py3-none-any.whl
+https://dxs9dnjebzm6y.cloudfront.net/tmp/cdc_util_202305111216-1.1-py3-none-any.whl
 # 作业运行需要的配置文件放到了在项目的config下，可以参考job-4x.properties，将文件上传到S3,后边配置Glue作业用
 
 
 ```
 * Glue job配置
 ```shell
---extra-jars s3://panchao-data/jars/emr-spark-redshift-1.0-SNAPSHOT.jar,s3://panchao-data/tmp/spark-sql-kafka-offset-committer-1.0.jar
+--extra-jars s3://panchao-data/jars/emr-spark-redshift-1.1-SNAPSHOT.jar,s3://panchao-data/tmp/spark-sql-kafka-offset-committer-1.0.jar
 --additional-python-modules  redshift_connector,jproperties,s3://panchao-data/tmp/cdc_util-1.1-py3-none-any.whl
 --aws_region us-east-1
 # 注意这个参数 --conf 直接写后边内容，spark.executor.cores 调成了8，表示一个worker可以同时运行的task是8
