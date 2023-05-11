@@ -1,5 +1,6 @@
 from botocore.exceptions import ClientError
 import boto3
+from pyspark.sql.types import StructType, StructField, StringType, IntegerType
 from pyspark.sql.functions import from_json
 from pyspark.sql.functions import udf
 from pyspark.sql.types import *
@@ -165,7 +166,7 @@ class CDCRedshiftSink:
             on_sql.append(tmp)
         return " and ".join(on_sql)
 
-    def _do_write_delete(self, scf, redshift_schema, table_name, primary_key, target_table, ignore_ddl):
+    def _do_write_delete(self, scf, redshift_schema, table_name, primary_key, target_table, ignore_ddl,super_columns):
         if target_table:
             target_table = target_table+"_delete"
             stage_table_name = redshift_schema + "." + "stage_table_" + target_table
@@ -184,6 +185,19 @@ class CDCRedshiftSink:
         self.logger("d operation(delete) sql:" + d_op)
         cols_to_drop = ['seqnum']
         d_df = self.spark.sql(d_op).drop(*cols_to_drop)
+        if super_columns:
+            # add super schema metadata
+            super_column_list = super_columns.split(",")
+            fields = []
+            for field in d_df.schema.fields:
+                if field.name in super_column_list:
+                    sf = StructField(field.name, field.dataType, field.nullable, metadata={"super": True})
+                else:
+                    sf = StructField(field.name, field.dataType, field.nullable)
+                fields.append(sf)
+            schema_with_super_metadata = StructType(fields)
+            d_df = self.spark.createDataFrame(d_df.rdd, schema_with_super_metadata)
+
         self.logger("stage table delete operate dataframe spark write to s3 {0}".format(self._getDFExampleString(d_df)))
         d_df_columns = d_df.columns
         d_df_columns.remove("operation")
@@ -228,7 +242,7 @@ class CDCRedshiftSink:
             .option("extracopyoptions", "TRUNCATECOLUMNS region '{0}'".format(self.region_name)) \
             .option("aws_iam_role", self.redshift_iam_role).mode("append").save()
 
-    def _do_write(self, scf, redshift_schema, table_name, primary_key, target_table, ignore_ddl):
+    def _do_write(self, scf, redshift_schema, table_name, primary_key, target_table, ignore_ddl,super_columns):
         if target_table:
             stage_table_name = redshift_schema + "." + "stage_table_" + target_table
             redshift_target_table = redshift_schema + "." + target_table
@@ -245,6 +259,20 @@ class CDCRedshiftSink:
         self.logger("iud operation(load,update,insert,delete) sql:" + iud_op)
         cols_to_drop = ['seqnum']
         iud_df = self.spark.sql(iud_op).drop(*cols_to_drop)
+        # add super schema metadata
+        if super_columns:
+            super_column_list = super_columns.split(",")
+            fields = []
+            for field in iud_df.schema.fields:
+                if field.name in super_column_list:
+                    sf = StructField(field.name, field.dataType, field.nullable, metadata={"super": True})
+                else:
+                    sf = StructField(field.name, field.dataType, field.nullable)
+                fields.append(sf)
+            schema_with_super_metadata = StructType(fields)
+
+            iud_df = self.spark.createDataFrame(iud_df.rdd, schema_with_super_metadata)
+
         self.logger("stage table dataframe spark write to s3 {0}".format(self._getDFExampleString(iud_df)))
 
         iud_df_columns = iud_df.columns
@@ -308,6 +336,7 @@ class CDCRedshiftSink:
             ignore_ddl = ""
             save_delete = ""
             only_save_delete = ""
+            super_columns = ""
             if "target_table" in item:
                 target_table = item["target_table"]
             if "ignore_ddl" in item:
@@ -316,6 +345,8 @@ class CDCRedshiftSink:
                 save_delete = item["save_delete"]
             if "only_save_delete" in item:
                 only_save_delete = item["only_save_delete"]
+            if "super_columns" in item:
+                super_columns = item["super_columns"]
 
             # target_table = redshift_schema + "." + table_name
 
@@ -328,7 +359,6 @@ class CDCRedshiftSink:
                 self.logger("the table {0}:  kafka source data: {1}".format(table_name, self._getDFExampleString(fdf)))
                 # auto gen schema
                 json_schema = self.spark.read.json(fdf.rdd.map(lambda p: str(p["value"]))).schema
-
                 self.logger("the table {0}: auto gen json schema: {1}".format(table_name, str(json_schema)))
                 scf = fdf.select(from_json(col("value"), json_schema).alias("kdata")).select("kdata.*")
 
@@ -336,11 +366,11 @@ class CDCRedshiftSink:
                                                                                                 self._getDFExampleString(
                                                                                                     scf)))
                 if only_save_delete == "true":
-                    self._do_write_delete(scf, self.redshift_schema, table_name, primary_key, target_table, ignore_ddl)
+                    self._do_write_delete(scf, self.redshift_schema, table_name, primary_key, target_table, ignore_ddl,super_columns)
                 else:
-                    self._do_write(scf, self.redshift_schema, table_name, primary_key, target_table,ignore_ddl)
+                    self._do_write(scf, self.redshift_schema, table_name, primary_key, target_table,ignore_ddl, super_columns)
                     if save_delete == "true":
-                        self._do_write_delete(scf, self.redshift_schema, table_name, primary_key, target_table, ignore_ddl)
+                        self._do_write_delete(scf, self.redshift_schema, table_name, primary_key, target_table, ignore_ddl,super_columns)
                 self.logger("sync the table complete: " + table_name)
                 task_status["status"] = "finished"
                 return task_status
