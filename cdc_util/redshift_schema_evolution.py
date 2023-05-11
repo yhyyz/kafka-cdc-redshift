@@ -163,6 +163,8 @@ class SchemaEvolution:
         if field.dataType == StringType():
             if "maxlength" in field.metadata:
                 string_type = "VARCHAR({0})".format(int(field.metadata.get("maxlength")))
+            elif "super" in field.metadata:
+                string_type = "super"
             else:
                 string_type = "VARCHAR(65535)"
         if field.dataType == DecimalType():
