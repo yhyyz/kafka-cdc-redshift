@@ -2,7 +2,7 @@
 Spark Streaming从Kafka中消费Flink CDC数据，多库多表实时同步到Redshift.当前支持
 * Glue Streaming Job
 * EMR Serverless Streaming Job
-![](https://pcmyp.oss-cn-beijing.aliyuncs.com/markdown/202304152140030.png)
+![](https://pcmyp.oss-cn-beijing.aliyuncs.com/markdown/202305251100845.png)
 
 ```markdown
 MySQL Flink CDC到Kafka有三种方式：
@@ -12,15 +12,15 @@ MySQL Flink CDC到Kafka有三种方式：
 ```
 
 #### feature
-    ```markdown
-    1. 多线程并行写多表, 支持insert, update，delete，秒级别延迟
-    2. Schema自动变更支持，增加列，删除列，修改列的长度，修改列类型(other->string,不支持string->other)
-    3. 从MSK(Kafka)接CDC，链路更稳定，上下游解耦，方便做数据回溯
-    4. Full Load阶段可以根据数据量调整资源快速加载
-    5. 支持忽略DDL模式,用户自己控制建表和Schema变更
-    6. 支持json字符串列存储为Redshift Super类型
-    7, 支持Mongo, 且支持以super方式存储到Redshift，将doc存储为super, 支持schema变更
-    ```
+```markdown
+1. 多线程并行写多表, 支持insert, update，delete，秒级别延迟
+2. Schema自动变更支持，增加列，删除列，修改列的长度，修改列类型(other->string,不支持string->other)
+3. 从MSK(Kafka)接CDC，链路更稳定，上下游解耦，方便做数据回溯
+4. Full Load阶段可以根据数据量调整资源快速加载
+5. 支持忽略DDL模式,用户自己控制建表和Schema变更
+6. 支持json字符串列存储为Redshift Super类型
+7. 支持Mongo, 且支持以super方式存储到Redshift，将doc存储为super, 支持schema变更
+```
 
 #### update history
 * 20230524 支持Mongo cdc，cdc格式为flink cdc change streams发送到kafka的数据。将整个doc存储为super
