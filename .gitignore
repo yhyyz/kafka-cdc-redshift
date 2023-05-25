@@ -36,6 +36,7 @@ MANIFEST
 *.manifest
 *.spec
 config/job-4x-test.properties
+config/mongo-job-4x-test.properties
 
 # Installer logs
 pip-log.txt

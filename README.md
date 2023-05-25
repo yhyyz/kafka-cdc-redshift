@@ -19,35 +19,43 @@ MySQL Flink CDC到Kafka有三种方式：
     4. Full Load阶段可以根据数据量调整资源快速加载
     5. 支持忽略DDL模式,用户自己控制建表和Schema变更
     6. 支持json字符串列存储为Redshift Super类型
+    7, 支持Mongo, 且支持以super方式存储到Redshift，将doc存储为super, 支持schema变更
     ```
 
 #### update history
-* 20230511 支持将json字符串列存储为super字段
-   ```markdown
-    # 如果mysql中字段内容为json字符串，可以将其存储为Redshift的super方便解析，同时super长度可以支持最大1MB的，16MB(预览版)，super_columns添加需要存储为super的列名字即可
-    sync_table_list = [\
-    {"db": "test_db", "table": "product", "primary_key": "pid","super_columns":"info,pdesc"}\
-    ]
-    ```
+* 20230524 支持Mongo cdc，cdc格式为flink cdc change streams发送到kafka的数据。将整个doc存储为super
+```markdown
+1. 使用[mongo_cdc_redshift.py](glue%2Fmongo_cdc_redshift.py)作为执行脚本，config下的[mongo-job-4x.properties](config%2Fmongo-job-4x.properties)作为参考配置即可.
+2. 对于mongo当前支持以flink cdc发送的使用MongoDB’s official Kafka Connector的数据格式，暂时不支持msk debezium的格式.因为mongo的Connector有两个选择可以参看说明(https://ververica.github.io/flink-cdc-connectors/release-2.1/content/connectors/mongodb-cdc.html#change-streams) cdc程序部署 https://github.com/yhyyz/flink-cdc-msk
+3. 将mongo的doc存储为super，当前redshift super最大1MB, 16MB是preview. 支持schema变更，因为是以整个doc_id和doc super来更新文档的，所以任何的schema改变都可以支持
+4. 为表自动添加doc_id，ts_date, ts_ms列。 doc_id是文档_id。ts_date,ts_ms是flink cdc程序执行获取到文档的日期和时间 
 
+```
+* 20230511 支持将json字符串列存储为super字段
+ ```markdown
+  # 如果mysql中字段内容为json字符串，可以将其存储为Redshift的super方便解析，同时super长度可以支持最大1MB的，16MB(预览版)，super_columns添加需要存储为super的列名字即可
+  sync_table_list = [\
+  {"db": "test_db", "table": "product", "primary_key": "pid","super_columns":"info,pdesc"}\
+  ]
+  ```
 * 20230425 支持delete数据单独写到一张表，表名自动以_delete结尾, 支持只同步delete数据，不同步原表数据，表名字自动以_delete结尾，配置例子如下
-    ```markdown
-    # save_delete设置为true，表示同步原表同时，将delete数据单独写一张表
-    # only_save_delete设置为true,表示只同步delete数据，不同步原表数据
-    sync_table_list = [\
-    {"db": "test_db", "table": "product", "primary_key": "pid","ignore_ddl":"true","save_delete":"true"},\    # 忽略ddl变更，表需要用户自己创建，创建表名如果不配置，请用源端的表名字创建redshift表
-    {"db": "test_db", "table": "user", "primary_key": "id","only_save_delete":"true"}\
-    ]
-    ```
+```markdown
+# save_delete设置为true，表示同步原表同时，将delete数据单独写一张表
+# only_save_delete设置为true,表示只同步delete数据，不同步原表数据
+sync_table_list = [\
+{"db": "test_db", "table": "product", "primary_key": "pid","ignore_ddl":"true","save_delete":"true"},\    # 忽略ddl变更，表需要用户自己创建，创建表名如果不配置，请用源端的表名字创建redshift表
+{"db": "test_db", "table": "user", "primary_key": "id","only_save_delete":"true"}\
+]
+```
 * 20230422 添加忽略Schema变更的支持，可以在配置中设置ignore_ddl=true, 如果设置之后，不会帮用户自动创建表，需要用户自己预先创建表，同样不会自动添加删除列，源端变更需要用户自己处理。
-    ```markdown
-    # 例如在job properties中配置如下
-    sync_table_list = [\
-    {"db": "test_db", "table": "product", "primary_key": "pid","ignore_ddl":"true"},\  # 忽略ddl变更，表需要用户自己创建，创建表名如果不配置，请用源端的表名字创建redshift表
-    {"db": "test_db", "table": "product", "primary_key": "pid","ignore_ddl":"true","target_table":"t_product"},\  # 忽略ddl变更，表需要用户自己创建，target_table配置自己在Redshift创建的表名称
-    {"db": "test_db", "table": "user", "primary_key": "id"}\ # 自动创建表，自动schema变更
-    ]
-    ```
+```markdown
+# 例如在job properties中配置如下
+sync_table_list = [\
+{"db": "test_db", "table": "product", "primary_key": "pid","ignore_ddl":"true"},\  # 忽略ddl变更，表需要用户自己创建，创建表名如果不配置，请用源端的表名字创建redshift表
+{"db": "test_db", "table": "product", "primary_key": "pid","ignore_ddl":"true","target_table":"t_product"},\  # 忽略ddl变更，表需要用户自己创建，target_table配置自己在Redshift创建的表名称
+{"db": "test_db", "table": "user", "primary_key": "id"}\ # 自动创建表，自动schema变更
+]
+```
 * 20230415 支持MSK Connector Debezium CDC 数据格式，截止目前，支持Flink CDC(Debezium),MSK Connector, DMS三种CDC数据格式,Flink CDC和MSK Connector都是Debezium格式
 * 20230414 修复指定Redshift非public之外的schema时，执行SQL时没有set search_path造成的异常
 
@@ -185,4 +193,117 @@ aws emr-serverless start-job-run \
     "transaction-id": 215426970434175
   }
 }
+```
+
+#### Mongo Flink CDC格式样例
+```json
+# replace
+{
+	"_id": "{\"_id\": {\"_id\": 1.0}}",
+	"operationType": "replace",
+	"fullDocument": "{\"_id\": 1.0, \"price\": 3.243, \"name\": \"p1\", \"desc\": {\"dname\": \"desc\"}}",
+	"source": {
+		"ts_ms": 1684918116000,
+		"snapshot": "false"
+	},
+	"ts_ms": 1684918116915,
+	"ns": {
+		"db": "test_db",
+		"coll": "product"
+	},
+	"to": null,
+	"documentKey": "{\"_id\": 1.0}",
+	"updateDescription": null,
+	"clusterTime": "{\"$timestamp\": {\"t\": 1684918116, \"i\": 1}}",
+	"txnNumber": null,
+	"lsid": null
+}
+# insert
+{
+	"_id": "{\"_id\": {\"_id\": 1.0}}",
+	"operationType": "insert",
+	"fullDocument": "{\"_id\": 1.0, \"price\": 2.243, \"name\": \"p1\", \"desc\": {\"dname\": \"desc\"}}",
+	"source": {
+		"ts_ms": 1684918589000,
+		"snapshot": "false"
+	},
+	"ts_ms": 1684918589037,
+	"ns": {
+		"db": "test_db",
+		"coll": "product"
+	},
+	"to": null,
+	"documentKey": "{\"_id\": 1.0}",
+	"updateDescription": null,
+	"clusterTime": "{\"$timestamp\": {\"t\": 1684918589, \"i\": 1}}",
+	"txnNumber": null,
+	"lsid": null
+}
+# update
+{
+	"_id": "{\"_id\": {\"_id\": 1.0}}",
+	"operationType": "update",
+	"fullDocument": "{\"_id\": 1.0, \"price\": 2.243, \"name\": \"p2\", \"desc\": {\"dname\": \"desc\"}}",
+	"source": {
+		"ts_ms": 1684920703000,
+		"snapshot": "false"
+	},
+	"ts_ms": 1684920703411,
+	"ns": {
+		"db": "test_db",
+		"coll": "product"
+	},
+	"to": null,
+	"documentKey": "{\"_id\": 1.0}",
+	"updateDescription": {
+		"updatedFields": "{\"name\": \"p2\"}",
+		"removedFields": []
+	},
+	"clusterTime": "{\"$timestamp\": {\"t\": 1684920703, \"i\": 1}}",
+	"txnNumber": null,
+	"lsid": null
+}
+# delete
+{
+	"_id": "{\"_id\": {\"_id\": 1.0}}",
+	"operationType": "delete",
+	"fullDocument": null,
+	"source": {
+		"ts_ms": 1684918449000,
+		"snapshot": "false"
+	},
+	"ts_ms": 1684918450355,
+	"ns": {
+		"db": "test_db",
+		"coll": "product"
+	},
+	"to": null,
+	"documentKey": "{\"_id\": 1.0}",
+	"updateDescription": null,
+	"clusterTime": "{\"$timestamp\": {\"t\": 1684918449, \"i\": 4}}",
+	"txnNumber": null,
+	"lsid": null
+}
+# doc_id multiple column
+{
+	"_id": "{\"_id\": {\"_id\": {\"user\": \"u1\", \"id\": 1.0}}}",
+	"operationType": "insert",
+	"fullDocument": "{\"_id\": {\"user\": \"u1\", \"id\": 1.0}, \"price\": 3.243, \"name\": \"p1\", \"desc\": {\"dname\": \"desc\"}}",
+	"source": {
+		"ts_ms": 1684921366000,
+		"snapshot": "false"
+	},
+	"ts_ms": 1684921366342,
+	"ns": {
+		"db": "test_db",
+		"coll": "product"
+	},
+	"to": null,
+	"documentKey": "{\"_id\": {\"user\": \"u1\", \"id\": 1.0}}",
+	"updateDescription": null,
+	"clusterTime": "{\"$timestamp\": {\"t\": 1684921366, \"i\": 1}}",
+	"txnNumber": null,
+	"lsid": null
+}
+
 ```
