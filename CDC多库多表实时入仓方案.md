@@ -8,7 +8,7 @@
 
 Redshfit作为当今时代性价比最优的企业级云上数仓，不仅采用`code generation,vectorized execution`等技术优化其执行引擎，提供卓越的性能表现。同时作为云原生的企业级数仓，Redshfit在稳定性，安全性，弹性扩展，容灾能力等方面也不断创新，为企业客户的智能数据分析保驾护航。这里列举几个Redshift的功能特性。1. 存算分离的架构，底层数据以专用格式存储在S3，计算资源不受存储限制可以灵活弹性扩展。2. DataSharing可以做到跨账号，跨Region的数据秒级共享，无需移动数据，底层存储是同一份数据。3. Redshift Serverless无需预置管理维护集群,随查询并发自动扩展RPU计算资源，按RPU计算时长付费，不查询不收费。4.Redshift ML可以SQL的方式创建机器学习模型，自动选择最优的算法，自动生成推理的UDF函数，在仓中直接完成对数据的深度探索。5. Streaming Ingestion可以直接将MSK和KDS的数据摄入到Redshift，无需部署任何其它组件，秒级别延迟。到2023年，Redshift历经11年的战火洗礼和技术创新，始终追求卓越，为数万企业保驾护航。
 
-##### 1.2 CDC工具和Redshiftd结合
+##### 1.2 CDC工具和Redshift结合
 
 关于CDC的基本介绍及相关的工具对比在[该篇数据入湖的文章](https://aws.amazon.com/cn/blogs/china/best-practice-of-using-amazon-emr-cdc-to-enter-the-lake-in-real-time-in-a-multi-database-multi-table-scenario/)中已经详细说明，这里不再赘述,唯一需要说明的是对于MSK Connector和Flink CDC其内核都是Debezium。总体而言当前CDC实时写入Redshift方式有两种模式。
 
@@ -39,7 +39,7 @@ CDC数据同步到Redshif，我们会面临如下的挑战，以上两种模式�
 
 ##### 2.1 架构图
 
-![](https://pcmyp.oss-cn-beijing.aliyuncs.com/markdown/202305041258640.png)
+![](https://pcmyp.oss-cn-beijing.aliyuncs.com/markdown/202305251114059.png)
 
 ##### 2.2 架构说明
 
@@ -55,6 +55,7 @@ CDC数据同步到Redshif，我们会面临如下的挑战，以上两种模式�
 * 支持忽略DDL模式,用户自己控制建表和控制Schema变更,如果设置之后，不再自动创建表，用户自己预先创建表，同样不会自动添加删除列，源端变更需要用户控制
 * 支持delete数据单独写到一张表，表名自动以_delete结尾, 支持只同步delete数据，不同步原表数据，表名字自动以_delete结尾
 * Spark根据消费的CDC DataFrame在Redshfit自动创建表结构，维护Schema变更，需要注意的是自动创建的是根据CDC的Json种的数据类型映射的，而非MySQL表中的元数据类型，表中的列的顺序是按照字母顺序排序的。如果想自己创建表，指定类型和字段顺序也是支持的，开启忽略DDL模式即可
+* 支持Mongo cdc将Mongo文档作为super存储到redshift，支持完整的Schema变更
 
 ##### 2.3 DMS使用时的注意事项
 
@@ -64,7 +65,7 @@ CDC数据同步到Redshif，我们会面临如下的挑战，以上两种模式�
 
 * DMS当遇到不支持的源端的Schema变更，比如修改类类型，或者修改字符类型长度时，DMS任务会失败,你需要手动调整Redshift表的列，让其和源端匹配，再重新Resume作业。
 
-* 如果DMS同步过程中某张表处于Suspend状态，你可以开启Debug日志，然后再DMS控制台，可以单独Reload这张表，查看错误原因，再对应解决，主要Reload这张表时，会重新拉取该表的数据。
+* 如果DMS同步过程中某张表处于Suspend状态，你可以开启Debug日志，然后在DMS控制台，可以单独Reload这张表，查看错误原因，再对应解决，Reload这张表时，会重新拉取该表的数据。
 
 * DMS任务在创建的时候如果是Full Load+ongoing replication模式，是不能直接从指定的Binlog位点重新启动作业的，需要新建一个ongoing replication的Task，这时可以从指定的MySQL Binlog位点启动作业，也可以从上个作业的Checkpoint启动作业
 
@@ -126,7 +127,7 @@ CDC数据同步到Redshif，我们会面临如下的挑战，以上两种模式�
 
 #### 三、部署实施
 
-对于CDC Sink到MSK这里使用两种方式给大家做个实例，第一个方式是Flink CDC的方式，Flink作业部署到KDA(Kinesis Data Analytics)中.第二个是MSK Connector配置Sink到MSK. 对于DMS发送到MSK，AWS Console上配置即可，只会说明注意事项。对于消费CDC数据Sink到Redshift，会将Spark Structured Streaming程序部署到Glue中。
+对于CDC Sink到MSK这里使用两种方式给大家做个示例，第一个方式是Flink CDC的方式，Flink作业部署到KDA(Kinesis Data Analytics)中.第二个是MSK Connector配置Sink到MSK. 对于DMS发送到MSK，AWS Console上配置即可，只会说明注意事项。对于消费CDC数据Sink到Redshift，会将Spark Structured Streaming程序部署到Glue中。
 
 ##### 3.1 Flink CDC Sink MSK
 
@@ -137,7 +138,7 @@ CDC数据同步到Redshif，我们会面临如下的挑战，以上两种模式�
   2. Flink CDC DataStream API解析MySQL Binlog发送到Kafka，支持按库发送到不同Topic, 也可以发送到同一个Topic
   3. 自定义FlinkKafkaPartitioner, 数据库名，表名，主键值三个拼接作为partition key, 保证相同主键的记录发送到Kafka的同一个分区，保证消息顺序。
   4. Flink CDC支持增量快照算法，全局无锁，Batch阶段的checkpoint, 但需要表有主键，如果没有主键列增量快照算法就不可用，无法同步数据，需要设置scan.incremental.snapshot.enabled=false禁用增量快照
-  5. 当前只加入了MySQL的支持，如需其它数据库，可以自行修改
+  5. 当前支持MySQL,Mongo，如需其它数据库，可以自行修改
   ```
 
 * 准备JAR包
@@ -224,6 +225,8 @@ CDC数据同步到Redshif，我们会面临如下的挑战，以上两种模式�
   connector.class=io.debezium.connector.mysql.MySqlConnector
   database.user=admin
   database.server.id=11000
+  # initial/schema_only/...
+  snapshot.mode=schema_only
   tasks.max=1
   database.server.name=test_server
   database.hostname=xxxxxx
@@ -382,8 +385,10 @@ https://github.com/yhyyz/kafka-cdc-redshift#mysql-cdc%E6%A0%BC%E5%BC%8F%E6%A0%B7
   # --conf spark.sql.shuffle.partitions=1  --conf spark.default.parallelism=1 设置为1，这是为了降低并行度，保证当多个线程同时写多张表时，都尽可能有资源执行，设置为1时，最终生产的数据文件也是1个，如果数据量很大，生产的一个文件可能会比较大，比如500MB，这样redshift copy花费的时间就会长一些，如果想要加速，就把这两个值调大一些，比如4，这样就会生产4个125M的文件，Redshift并行copy就会快一些，但Glue作业的资源对应就要设置多一些，可以观察执行速度评估
   --conf spark.sql.streaming.streamingQueryListeners=net.heartsavior.spark.KafkaOffsetCommitterListener  --conf spark.executor.cores=8 --conf spark.sql.shuffle.partitions=1  --conf spark.default.parallelism=1 --conf spark.speculation=false --conf spark.dynamicAllocation.enabled=false
   --config_s3_path  s3://xxxx/kafka-cdc-redshift/job-4x.properties
+  # 关闭spark event log, streaming模式event log增长会将driver端的磁盘打满
   --enable-spark-ui false
   # Glue 选择3.x,作业类型选择Spark Streaming作业，worker个数根据同步表的数量和大小选择，Number of retries 在Streaming作业下可以设置大些，比如100。 失败自动重启，且会从checkpoint自动重启。 
+  
   ```
 
   ![](https://pcmyp.oss-cn-beijing.aliyuncs.com/markdown/202304281630244.png)
@@ -398,7 +403,7 @@ https://github.com/yhyyz/kafka-cdc-redshift#mysql-cdc%E6%A0%BC%E5%BC%8F%E6%A0%B7
 
 ![](https://pcmyp.oss-cn-beijing.aliyuncs.com/markdown/202304281648452.png)
 
-##### 3.5 监控
+##### 3.7 监控
 
 监控是非常重要的，Kafka的Offset延迟，Glue作业的运行状态，同步到Redshift表的数据和元表的数据的一致性检查。这些重要的指标都需要监控报警出来，当前需要将这些监控纳入到自己的监控体系中。最简单的方式是CloudWatch拿到Kafka，Glue的监控指标定义报警规则。对于数据一致性的校验，可以写一个脚本，执行双端SQL对比检查，这是相对简单高效的方式。
 
