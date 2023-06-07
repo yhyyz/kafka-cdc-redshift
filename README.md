@@ -63,7 +63,7 @@ sync_table_list = [\
 * 下载依赖
 ```shell
 # 下载依赖的JAR, 上传到S3
-wget https://dxs9dnjebzm6y.cloudfront.net/tmp/emr-spark-redshift-1.1-SNAPSHOT.jar
+wget https://dxs9dnjebzm6y.cloudfront.net/tmp/emr-spark-redshift-1.1-SNAPSHOT-20230606.jar
 wget https://dxs9dnjebzm6y.cloudfront.net/tmp/spark-sql-kafka-offset-committer-1.0.jar
 # cdc_util build成whl,方便再在多个环境中使用,直接执行如下命令build 或者下载build好的
 python3 setup.py bdist_wheel
