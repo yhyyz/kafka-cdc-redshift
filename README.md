@@ -108,8 +108,8 @@ source cdc_venv/bin/activate
 pip3 install --upgrade pip
 pip3 install redshift_connector jproperties
 # cdc_util是封装好的Spark CDC Redshift 的包，源代码在cdc_util中
-https://dxs9dnjebzm6y.cloudfront.net/tmp/cdc_util_202304251252-1.1-py3-none-any.whl
-pip3 install cdc_util_202304151934-1.1-py3-none-any.whl
+https://dxs9dnjebzm6y.cloudfront.net/tmp/cdc_util_202306150024-1.1-py3-none-any.whl
+pip3 install cdc_util_202306150024-1.1-py3-none-any.whl
 
 pip3 install venv-pack
 venv-pack -f -o cdc_venv.tar.gz
@@ -120,6 +120,7 @@ aws s3 cp cdc_venv.tar.gz s3://panchao-data/cdc/
 * submit job
 ```shell
 # https://dxs9dnjebzm6y.cloudfront.net/tmp/spark-sql-kafka-offsert-commiter-1.0.jar
+# https://dxs9dnjebzm6y.cloudfront.net/tmp/emr-spark-redshift-1.1-SNAPSHOT-20230614.jar
 app_id=00f8frvjd84ve709
 role_arn=
 script_path=s3://panchao-data/serverless-script/cdc_redshift.py
