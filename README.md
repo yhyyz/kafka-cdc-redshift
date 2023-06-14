@@ -23,6 +23,15 @@ MySQL Flink CDC到Kafka有三种方式：
 ```
 
 #### update history
+* 20230614 支持配置指定timestamp类型列和date列
+```markdown
+# timestamp_columns 指定timestamp列，多个列逗号分隔。 如果需要指定格式 col1:col2|yyyy-MM-dd HH:mm:ss, 默认的格式是yyyy-MM-dd\'T\'HH:mm:ss\'Z\', flink cdc和dms cdc解析到json的string默认值。
+# create_date 指定date列，多个列逗号分隔。如果需要指定格式 col1:col2|yyyy-MM-dd，默认格式是flink CDC解析date格式，是1970-01-01年到当前的天数。
+sync_table_list = [\
+{"db": "test_db", "table": "product","target_table":"product_super","primary_key": "id","ignore_ddl":"true","super_columns":"other_fields","timestamp_columns":"create_time","date_columns":"create_date"}\
+]
+
+```
 * 20230524 支持Mongo cdc，cdc格式为flink cdc change streams发送到kafka的数据。将整个doc存储为super
 ```markdown
 1. 使用[mongo_cdc_redshift.py](glue%2Fmongo_cdc_redshift.py)作为执行脚本，config下的[mongo-job-4x.properties](config%2Fmongo-job-4x.properties)作为参考配置即可.
@@ -63,12 +72,14 @@ sync_table_list = [\
 * 下载依赖
 ```shell
 # 下载依赖的JAR, 上传到S3
-wget https://dxs9dnjebzm6y.cloudfront.net/tmp/emr-spark-redshift-1.1-SNAPSHOT-20230606.jar
+https://dxs9dnjebzm6y.cloudfront.net/tmp/emr-spark-redshift-1.1-SNAPSHOT-20230614.jar
 wget https://dxs9dnjebzm6y.cloudfront.net/tmp/spark-sql-kafka-offset-committer-1.0.jar
 # cdc_util build成whl,方便再在多个环境中使用,直接执行如下命令build 或者下载build好的
 python3 setup.py bdist_wheel
 # 编译好的
-https://dxs9dnjebzm6y.cloudfront.net/tmp/cdc_util_202305242320-1.1-py3-none-any.whl
+https://dxs9dnjebzm6y.cloudfront.net/tmp/cdc_util_202306150024-1.1-py3-none-any.whl
+
+
 # 作业运行需要的配置文件放到了在项目的config下，可以参考job-4x.properties，将文件上传到S3,后边配置Glue作业用
 
 
@@ -170,6 +181,47 @@ aws emr-serverless start-job-run \
   },
   "op": "u",
   "ts_ms": 1681561501093,
+  "transaction": null
+}
+// time json
+{
+  "before": {
+    "id": 19,
+    "name": "c11",
+    "info": "stest",
+    "pdesc": "stest",
+    "other_fields": "{\"is_hfss\": false, \"action_v2\": [], \"buy_reach\": null, \"frequency\": null, \"deep_cpabid\": 0, \"rf_buy_type\": null, \"brand_safety\": null, \"device_price\": null, \"external_type\": \"APP_ANDROID\", \"buy_impression\": null, \"rf_predict_cpr\": null, \"statistic_type\": null, \"video_download\": \"PREVENT_DOWNLOAD\", \"ios14_quota_type\": \"UNOCCUPIED\", \"is_new_structure\": false, \"is_share_disable\": false, \"scheduled_budget\": 0, \"conversion_window\": null, \"frequency_schedule\": null, \"automated_targeting\": \"OFF\", \"brand_safety_partner\": null, \"rf_predict_frequency\": null, \"daily_retention_ratio\": null, \"exclude_custom_actions\": [], \"include_custom_actions\": [], \"split_test_adgroup_ids\": [], \"enable_inventory_filter\": false}",
+    "create_time": "2023-06-14T14:15:45Z",
+    "create_date": 19522
+  },
+  "after": {
+    "id": 19,
+    "name": "c12",
+    "info": "stest",
+    "pdesc": "stest",
+    "other_fields": "{\"is_hfss\": false, \"action_v2\": [], \"buy_reach\": null, \"frequency\": null, \"deep_cpabid\": 0, \"rf_buy_type\": null, \"brand_safety\": null, \"device_price\": null, \"external_type\": \"APP_ANDROID\", \"buy_impression\": null, \"rf_predict_cpr\": null, \"statistic_type\": null, \"video_download\": \"PREVENT_DOWNLOAD\", \"ios14_quota_type\": \"UNOCCUPIED\", \"is_new_structure\": false, \"is_share_disable\": false, \"scheduled_budget\": 0, \"conversion_window\": null, \"frequency_schedule\": null, \"automated_targeting\": \"OFF\", \"brand_safety_partner\": null, \"rf_predict_frequency\": null, \"daily_retention_ratio\": null, \"exclude_custom_actions\": [], \"include_custom_actions\": [], \"split_test_adgroup_ids\": [], \"enable_inventory_filter\": false}",
+    "create_time": "2023-06-14T14:15:51Z",
+    "create_date": 19522
+  },
+  "source": {
+    "version": "1.6.4.Final",
+    "connector": "mysql",
+    "name": "mysql_binlog_source",
+    "ts_ms": 1686752151000,
+    "snapshot": "false",
+    "db": "test_db",
+    "sequence": null,
+    "table": "product",
+    "server_id": 57330068,
+    "gtid": null,
+    "file": "mysql-bin-changelog.085201",
+    "pos": 2184,
+    "row": 0,
+    "thread": null,
+    "query": null
+  },
+  "op": "u",
+  "ts_ms": 1686752151386,
   "transaction": null
 }
 // dms data
