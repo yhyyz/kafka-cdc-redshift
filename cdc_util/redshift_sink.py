@@ -4,7 +4,7 @@ from pyspark.sql.types import StructType, StructField, StringType, IntegerType
 from pyspark.sql.functions import from_json
 from pyspark.sql.functions import udf
 from pyspark.sql.types import *
-from pyspark.sql.functions import col
+from pyspark.sql.functions import col,to_timestamp,to_date,date_add,expr
 import redshift_connector
 from cdc_util.redshift_schema_evolution import SchemaEvolution
 import json
@@ -114,6 +114,12 @@ class CDCRedshiftSink:
             return schema_str + "\n" + data_str
         else:
             return "(disable show dataframe)"
+    def _getDFSchemaJsonString(self, df):
+        if self.disable_dataframe_show == "false":
+            schema_str = df.schema.json()
+            return schema_str
+        else:
+            return "(disable show dataframe schema)"
 
     def _run_sql_with_result(self, sql_str, schema):
         with self.con.cursor() as cursor:
@@ -130,6 +136,29 @@ class CDCRedshiftSink:
             return False
         else:
             return True
+
+    def _convert_date_or_timestamp(self, df, time_columns, convert_format):
+        column_list = time_columns.split("|")
+        if len(column_list) == 2:
+            date_format = column_list[1]
+        else:
+            if convert_format == "date":
+                date_format = "since_1970"
+            else:
+                date_format = "yyyy-MM-dd\'T\'HH:mm:ss\'Z\'"
+        if len(column_list) == 0:
+            return df
+        columns = column_list[0].split(",")
+        for column in columns:
+            if convert_format == "date":
+                if date_format == "since_1970":
+                    df = df.withColumn(column, expr("date_add('1970-01-01',cast({0} as int))".format(column)))
+                else:
+                    df = df.withColumn(column, expr('to_date({0}, "{1}")'.format(column, date_format)))
+            else:
+                df = df.withColumn(column, expr('to_timestamp({0}, "{1}")'.format(column, date_format)))
+        return df
+
 
     #	{"before":null,"after":{"pid":6,"pname":"pp6-name","pprice":"12.14","create_time":"2023-03-12T16:15:06Z","modify_time":"2023-03-12T16:15:06Z"},"source":{"version":"1.6.4.Final","connector":"mysql","name":"mysql_binlog_source","ts_ms":0,"snapshot":"false","db":"test_db","sequence":null,"table":"product_03","server_id":0,"gtid":null,"file":"","pos":0,"row":0,"thread":null,"query":null,"kafka_partition_key":"test_db.product_03.no_pk"},"op":"r","ts_ms":1678759544359,"transaction":null}
     def _get_cdc_sql_from_view(self, view_name, primary_key):
@@ -166,7 +195,7 @@ class CDCRedshiftSink:
             on_sql.append(tmp)
         return " and ".join(on_sql)
 
-    def _do_write_delete(self, scf, redshift_schema, table_name, primary_key, target_table, ignore_ddl,super_columns):
+    def _do_write_delete(self, scf, redshift_schema, table_name, primary_key, target_table, ignore_ddl,super_columns, timestamp_columns, date_columns):
         if target_table:
             target_table = target_table+"_delete"
             stage_table_name = redshift_schema + "." + "stage_table_" + target_table
@@ -188,6 +217,8 @@ class CDCRedshiftSink:
         if super_columns:
             # add super schema metadata
             super_column_list = super_columns.split(",")
+            if len(super_columns)>0:
+                d_df = d_df.na.fill("").replace(to_replace='', value="{}", subset=super_column_list)
             fields = []
             for field in d_df.schema.fields:
                 if field.name in super_column_list:
@@ -197,6 +228,17 @@ class CDCRedshiftSink:
                 fields.append(sf)
             schema_with_super_metadata = StructType(fields)
             d_df = self.spark.createDataFrame(d_df.rdd, schema_with_super_metadata)
+            self.logger(
+                "stage table dataframe with super metadata {0}".format(self._getDFSchemaJsonString(d_df)))
+
+        if timestamp_columns:
+            d_df = self._convert_date_or_timestamp(d_df, time_columns=timestamp_columns, convert_format="timestamp")
+            self.logger(
+                "stage table dataframe with timestamp convert {0}".format(self._getDFSchemaJsonString(iud_df)))
+        if date_columns:
+            d_df = self._convert_date_or_timestamp(d_df, time_columns=date_columns, convert_format="date")
+            self.logger(
+                "stage table dataframe with date convert {0}".format(self._getDFSchemaJsonString(iud_df)))
 
         self.logger("stage table delete operate dataframe spark write to s3 {0}".format(self._getDFExampleString(d_df)))
         d_df_columns = d_df.columns
@@ -242,7 +284,7 @@ class CDCRedshiftSink:
             .option("extracopyoptions", "TRUNCATECOLUMNS region '{0}'".format(self.region_name)) \
             .option("aws_iam_role", self.redshift_iam_role).mode("append").save()
 
-    def _do_write(self, scf, redshift_schema, table_name, primary_key, target_table, ignore_ddl,super_columns):
+    def _do_write(self, scf, redshift_schema, table_name, primary_key, target_table, ignore_ddl,super_columns,timestamp_columns, date_columns):
         if target_table:
             stage_table_name = redshift_schema + "." + "stage_table_" + target_table
             redshift_target_table = redshift_schema + "." + target_table
@@ -262,6 +304,8 @@ class CDCRedshiftSink:
         # add super schema metadata
         if super_columns:
             super_column_list = super_columns.split(",")
+            if len(super_columns)>0:
+                iud_df = iud_df.na.fill("").replace(to_replace='', value="{}", subset=super_column_list)
             fields = []
             for field in iud_df.schema.fields:
                 if field.name in super_column_list:
@@ -270,8 +314,18 @@ class CDCRedshiftSink:
                     sf = StructField(field.name, field.dataType, field.nullable)
                 fields.append(sf)
             schema_with_super_metadata = StructType(fields)
-
             iud_df = self.spark.createDataFrame(iud_df.rdd, schema_with_super_metadata)
+            self.logger(
+                "stage table dataframe schema with super metadata {0}".format(self._getDFSchemaJsonString(iud_df)))
+
+        if timestamp_columns:
+            iud_df = self._convert_date_or_timestamp(iud_df,time_columns=timestamp_columns,convert_format="timestamp")
+            self.logger(
+                "stage table dataframe with timestamp convert {0}".format(self._getDFSchemaJsonString(iud_df)))
+        if date_columns:
+            iud_df = self._convert_date_or_timestamp(iud_df,time_columns=date_columns, convert_format="date")
+            self.logger(
+                "stage table dataframe with date convert {0}".format(self._getDFSchemaJsonString(iud_df)))
 
         self.logger("stage table dataframe spark write to s3 {0}".format(self._getDFExampleString(iud_df)))
 
@@ -337,6 +391,8 @@ class CDCRedshiftSink:
             save_delete = ""
             only_save_delete = ""
             super_columns = ""
+            timestamp_columns = ""
+            date_columns = ""
             if "target_table" in item:
                 target_table = item["target_table"]
             if "ignore_ddl" in item:
@@ -347,6 +403,10 @@ class CDCRedshiftSink:
                 only_save_delete = item["only_save_delete"]
             if "super_columns" in item:
                 super_columns = item["super_columns"]
+            if "timestamp_columns" in item:
+                timestamp_columns = item["timestamp_columns"]
+            if "date_columns" in item:
+                date_columns = item["date_columns"]
 
             # target_table = redshift_schema + "." + table_name
 
@@ -366,11 +426,11 @@ class CDCRedshiftSink:
                                                                                                 self._getDFExampleString(
                                                                                                     scf)))
                 if only_save_delete == "true":
-                    self._do_write_delete(scf, self.redshift_schema, table_name, primary_key, target_table, ignore_ddl,super_columns)
+                    self._do_write_delete(scf, self.redshift_schema, table_name, primary_key, target_table, ignore_ddl,super_columns,timestamp_columns,date_columns)
                 else:
-                    self._do_write(scf, self.redshift_schema, table_name, primary_key, target_table,ignore_ddl, super_columns)
+                    self._do_write(scf, self.redshift_schema, table_name, primary_key, target_table,ignore_ddl, super_columns,timestamp_columns,date_columns)
                     if save_delete == "true":
-                        self._do_write_delete(scf, self.redshift_schema, table_name, primary_key, target_table, ignore_ddl,super_columns)
+                        self._do_write_delete(scf, self.redshift_schema, table_name, primary_key, target_table, ignore_ddl,super_columns,timestamp_columns,date_columns)
                 self.logger("sync the table complete: " + table_name)
                 task_status["status"] = "finished"
                 return task_status
