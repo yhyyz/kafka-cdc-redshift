@@ -191,8 +191,8 @@ aws s3 cp spark-sql-kafka-offset-committer-1.0.jar  ${s3_location}
 # cluster mode
 export s3_location=s3://panchao-data/tmp/
 # 代码中的emr_ec2中cdc_redshift.py和conf的djob-ec2.properties
-wget https://raw.githubusercontent.com/yhyyz/kafka-cdc-redshift/main/emr_ec2/cdc_redshift.py .
-wget https://raw.githubusercontent.com/yhyyz/kafka-cdc-redshift/main/config/job-ec2.properties .
+wget https://raw.githubusercontent.com/yhyyz/kafka-cdc-redshift/main/emr_ec2/cdc_redshift.py
+wget https://raw.githubusercontent.com/yhyyz/kafka-cdc-redshift/main/config/job-ec2.properties
 aws s3 cp cdc_redshift.py  ${s3_location}
 aws s3 cp job-ec2.properties  ${s3_location}
 
