@@ -150,10 +150,10 @@ aws emr-serverless start-job-run \
 
 #### EMR on EC2
 * python lib venv
-* emr 6.9.0
+* emr 6.7.0
 ```shell
 # python lib 
-export s3_location=s3://panchao-data/tmp/
+export s3_location=s3://panchao-data/tmp
 python3 -m venv cdc_venv
 source cdc_venv/bin/activate
 pip3 install --upgrade pip
@@ -165,16 +165,16 @@ pip3 install cdc_util_202306150024-1.1-py3-none-any.whl
 pip3 install venv-pack
 venv-pack -f -o cdc_venv.tar.gz
 # 上传到S3
-aws s3 cp cdc_venv.tar.gz ${s3_location}
+aws s3 cp cdc_venv.tar.gz ${s3_location}/
 ```
 * depedency jars
 ```shell
 # kafka lib
-export s3_location=s3://panchao-data/tmp/
+export s3_location=s3://panchao-data/tmp
 mkdir jars
-wget -P ./jars  https://repo1.maven.org/maven2/org/apache/spark/spark-sql-kafka-0-10_2.12/3.3.0/spark-sql-kafka-0-10_2.12-3.3.0.jar
+wget -P ./jars  https://repo1.maven.org/maven2/org/apache/spark/spark-sql-kafka-0-10_2.12/3.2.1/spark-sql-kafka-0-10_2.12-3.2.1.jar
 wget -P ./jars  https://repo1.maven.org/maven2/org/apache/kafka/kafka-clients/2.8.2/kafka-clients-2.8.2.jar
-wget -P ./jars  https://repo1.maven.org/maven2/org/apache/spark/spark-token-provider-kafka-0-10_2.12/3.3.0/spark-token-provider-kafka-0-10_2.12-3.3.0.jar
+wget -P ./jars  https://repo1.maven.org/maven2/org/apache/spark/spark-token-provider-kafka-0-10_2.12/3.2.1/spark-token-provider-kafka-0-10_2.12-3.2.1.jar
 wget -P ./jars  https://repo1.maven.org/maven2/org/apache/commons/commons-pool2/2.11.1/commons-pool2-2.11.1.jar
 aws s3 sync ./jars ${s3_location}/jars/
 
@@ -182,19 +182,19 @@ aws s3 sync ./jars ${s3_location}/jars/
 wget https://dxs9dnjebzm6y.cloudfront.net/tmp/emr-spark-redshift-1.1-SNAPSHOT-20230614.jar
 wget https://dxs9dnjebzm6y.cloudfront.net/tmp/spark-sql-kafka-offset-committer-1.0.jar
 
-aws s3 cp emr-spark-redshift-1.1-SNAPSHOT-20230614.jar  ${s3_location}
-aws s3 cp spark-sql-kafka-offset-committer-1.0.jar  ${s3_location}
+aws s3 cp emr-spark-redshift-1.1-SNAPSHOT-20230614.jar  ${s3_location}/
+aws s3 cp spark-sql-kafka-offset-committer-1.0.jar  ${s3_location}/
 
 ```
 * submit job
 ```shell
+export s3_location=s3://panchao-data/tmp
 # cluster mode
-export s3_location=s3://panchao-data/tmp/
 # 代码中的emr_ec2中cdc_redshift.py和conf的djob-ec2.properties
 wget https://raw.githubusercontent.com/yhyyz/kafka-cdc-redshift/main/emr_ec2/cdc_redshift.py
 wget https://raw.githubusercontent.com/yhyyz/kafka-cdc-redshift/main/config/job-ec2.properties
-aws s3 cp cdc_redshift.py  ${s3_location}
-aws s3 cp job-ec2.properties  ${s3_location}
+aws s3 cp cdc_redshift.py  ${s3_location}/
+aws s3 cp job-ec2.properties  ${s3_location}/
 
 spark-submit --master yarn --deploy-mode cluster \
 --num-executors 5 \
@@ -214,6 +214,7 @@ ${s3_location}/cdc_redshift.py us-east-1 ${s3_location}/job-ec2.properties
 
 
 # client mode
+export s3_location=s3://panchao-data/tmp
 spark-submit --master yarn --deploy-mode client \
 --num-executors 5 \
 --conf "spark.yarn.dist.archives=${s3_location}/cdc_venv.tar.gz#cdc_venv" \
@@ -228,10 +229,12 @@ spark-submit --master yarn --deploy-mode client \
 --conf spark.sql.shuffle.partitions=2 \
 --conf spark.default.parallelism=2 \
 --conf spark.dynamicAllocation.enabled=false \
---conf spark.jars=${s3_location}/emr-spark-redshift-1.1-SNAPSHOT-20230614.jar,${s3_location}/spark-sql-kafka-offsert-commiter-1.0.jar,${s3_location}/jars/*.jar,/usr/share/aws/redshift/jdbc/RedshiftJDBC.jar,/usr/share/aws/redshift/spark-redshift/lib/spark-avro.jar,/usr/share/aws/redshift/spark-redshift/lib/minimal-json.jar \
+--conf spark.jars=${s3_location}/emr-spark-redshift-1.1-SNAPSHOT-20230614.jar,${s3_location}/spark-sql-kafka-offsert-commiter-1.0.jar,${s3_location}/jars/commons-pool2-2.11.1.jar,${s3_location}/jars/kafka-clients-2.8.2.jar,${s3_location}/jars/spark-sql-kafka-0-10_2.12-3.2.1.jar,${s3_location}/jars/spark-token-provider-kafka-0-10_2.12-3.2.1.jar,/usr/share/aws/redshift/jdbc/RedshiftJDBC.jar,/usr/share/aws/redshift/spark-redshift/lib/spark-avro.jar,/usr/share/aws/redshift/spark-redshift/lib/minimal-json.jar \
 ${s3_location}/cdc_redshift.py us-east-1 ${s3_location}/job-ec2.properties
 
 ```
+
+
 
 
 #### MySQL CDC格式样例
