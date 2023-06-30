@@ -166,7 +166,9 @@ class CDCRedshiftSink:
         iud_op_sql = ""
         if self.cdc_format == "DMS-CDC":
             partition_key = ",".join(["data." + pk for pk in primary_key.split(",")])
-            iud_op_sql = "select * from (select data.*, metadata.operation as operation, row_number() over (partition by {primary_key} order by metadata.timestamp desc) as seqnum  from {view_name} where (metadata.operation='load' or metadata.operation='delete' or metadata.operation='insert' or metadata.operation='update') and  metadata.`record-type`!='control' and metadata.`record-type`='data') t1 where seqnum=1".format(
+            # iud_op_sql = "select * from (select data.*, metadata.operation as operation, row_number() over (partition by {primary_key} order by metadata.timestamp desc) as seqnum  from {view_name} where (metadata.operation='load' or metadata.operation='delete' or metadata.operation='insert' or metadata.operation='update') and  metadata.`record-type`!='control' and metadata.`record-type`='data') t1 where seqnum=1".format(
+            #     primary_key=partition_key, view_name="global_temp." + view_name)
+            iud_op_sql = "select * from (select data.*, metadata.operation as operation, row_number() over (partition by {primary_key} order by metadata.timestamp desc) as seqnum  from (select * from {view_name} where (metadata.operation='load' or metadata.operation='delete' or metadata.operation='insert' or metadata.operation='update') and  metadata.`record-type`!='control' and metadata.`record-type`='data') t1 )t2 where seqnum=1".format(
                 primary_key=partition_key, view_name="global_temp." + view_name)
         elif self.cdc_format == "FLINK-CDC" or self.cdc_format == "MSK-DEBEZIUM-CDC":
             partition_key = ",".join(["after." + pk for pk in primary_key.split(",")])
