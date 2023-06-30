@@ -159,7 +159,7 @@ pip3 install --upgrade pip
 pip3 install redshift_connector jproperties
 # cdc_util是封装好的Spark CDC Redshift的包，源代码在cdc_util中
 wget https://dxs9dnjebzm6y.cloudfront.net/tmp/cdc_util_202306302241-1.1-py3-none-any.whl
-pip3 install cdc_util_202306302213-1.1-py3-none-any.whl
+pip3 install cdc_util_202306302241-1.1-py3-none-any.whl
 
 pip3 install venv-pack
 venv-pack -f -o cdc_venv.tar.gz
