@@ -34,7 +34,7 @@ def gen_filter_udf(db, table, cdc_format):
         control_pattern = re.compile(record_type)
         control_res = control_pattern.findall(str_json)
 
-        if schema_res and table_res and control_res:
+        if schema_res and table_res and (not control_res):
             return True
         else:
             return False
