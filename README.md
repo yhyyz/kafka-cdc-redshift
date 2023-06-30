@@ -78,7 +78,7 @@ wget https://dxs9dnjebzm6y.cloudfront.net/tmp/spark-sql-kafka-offset-committer-1
 # cdc_util build成whl,方便再在多个环境中使用,直接执行如下命令build 或者下载build好的
 python3 setup.py bdist_wheel
 # 编译好的
-https://dxs9dnjebzm6y.cloudfront.net/tmp/cdc_util_202306302054-1.1-py3-none-any.whl
+https://dxs9dnjebzm6y.cloudfront.net/tmp/cdc_util_202306302213-1.1-py3-none-any.whl
 
 # 作业运行需要的配置文件放到了在项目的config下，可以参考job-4x.properties，将文件上传到S3,后边配置Glue作业用
 
@@ -108,8 +108,7 @@ source cdc_venv/bin/activate
 pip3 install --upgrade pip
 pip3 install redshift_connector jproperties
 # cdc_util是封装好的Spark CDC Redshift 的包，源代码在cdc_util中
-https://dxs9dnjebzm6y.cloudfront.net/tmp/cdc_util_202306302054-1.1-py3-none-any.whl
-
+https://dxs9dnjebzm6y.cloudfront.net/tmp/cdc_util_202306302213-1.1-py3-none-any.whl
 pip3 install cdc_util_202306302054-1.1-py3-none-any.whl
 
 pip3 install venv-pack
@@ -159,8 +158,8 @@ source cdc_venv/bin/activate
 pip3 install --upgrade pip
 pip3 install redshift_connector jproperties
 # cdc_util是封装好的Spark CDC Redshift的包，源代码在cdc_util中
-wget https://dxs9dnjebzm6y.cloudfront.net/tmp/cdc_util_202306302054-1.1-py3-none-any.whl
-pip3 install cdc_util_202306302054-1.1-py3-none-any.whl
+wget https://dxs9dnjebzm6y.cloudfront.net/tmp/cdc_util_202306302213-1.1-py3-none-any.whl
+pip3 install cdc_util_202306302213-1.1-py3-none-any.whl
 
 pip3 install venv-pack
 venv-pack -f -o cdc_venv.tar.gz
@@ -209,7 +208,7 @@ spark-submit --master yarn --deploy-mode cluster \
 --conf spark.sql.shuffle.partitions=2 \
 --conf spark.default.parallelism=2 \
 --conf spark.dynamicAllocation.enabled=false \
---conf spark.jars=${s3_location}/emr-spark-redshift-1.1-SNAPSHOT-20230614.jar,${s3_location}/spark-sql-kafka-offsert-commiter-1.0.jar,${s3_location}/jars/*.jar,/usr/share/aws/redshift/jdbc/RedshiftJDBC.jar,/usr/share/aws/redshift/spark-redshift/lib/spark-avro.jar,/usr/share/aws/redshift/spark-redshift/lib/minimal-json.jar \
+--conf spark.jars=${s3_location}/emr-spark-redshift-1.1-SNAPSHOT-20230614.jar,${s3_location}/spark-sql-kafka-offset-committer-1.0.jar,${s3_location}/jars/*.jar,/usr/share/aws/redshift/jdbc/RedshiftJDBC.jar,/usr/share/aws/redshift/spark-redshift/lib/spark-avro.jar,/usr/share/aws/redshift/spark-redshift/lib/minimal-json.jar \
 ${s3_location}/cdc_redshift.py us-east-1 ${s3_location}/job-ec2.properties
 
 
@@ -229,7 +228,7 @@ spark-submit --master yarn --deploy-mode client \
 --conf spark.sql.shuffle.partitions=2 \
 --conf spark.default.parallelism=2 \
 --conf spark.dynamicAllocation.enabled=false \
---conf spark.jars=${s3_location}/emr-spark-redshift-1.1-SNAPSHOT-20230614.jar,${s3_location}/spark-sql-kafka-offsert-commiter-1.0.jar,${s3_location}/jars/commons-pool2-2.11.1.jar,${s3_location}/jars/kafka-clients-2.8.2.jar,${s3_location}/jars/spark-sql-kafka-0-10_2.12-3.2.1.jar,${s3_location}/jars/spark-token-provider-kafka-0-10_2.12-3.2.1.jar,/usr/share/aws/redshift/jdbc/RedshiftJDBC.jar,/usr/share/aws/redshift/spark-redshift/lib/spark-avro.jar,/usr/share/aws/redshift/spark-redshift/lib/minimal-json.jar \
+--conf spark.jars=${s3_location}/emr-spark-redshift-1.1-SNAPSHOT-20230614.jar,${s3_location}/spark-sql-kafka-offset-committer-1.0.jar,${s3_location}/jars/commons-pool2-2.11.1.jar,${s3_location}/jars/kafka-clients-2.8.2.jar,${s3_location}/jars/spark-sql-kafka-0-10_2.12-3.2.1.jar,${s3_location}/jars/spark-token-provider-kafka-0-10_2.12-3.2.1.jar,/usr/share/aws/redshift/jdbc/RedshiftJDBC.jar,/usr/share/aws/redshift/spark-redshift/lib/spark-avro.jar,/usr/share/aws/redshift/spark-redshift/lib/minimal-json.jar \
 ${s3_location}/cdc_redshift.py us-east-1 ${s3_location}/job-ec2.properties
 
 ```
