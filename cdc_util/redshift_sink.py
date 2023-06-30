@@ -281,7 +281,7 @@ class CDCRedshiftSink:
             .option("postactions", post_query) \
             .option("tempformat", "CSV") \
             .option("s3_endpoint", self.s3_endpoint) \
-            .option("extracopyoptions", "TRUNCATECOLUMNS region '{0}'".format(self.region_name)) \
+            .option("extracopyoptions", "TRUNCATECOLUMNS region '{0}' dateformat 'auto' timeformat 'auto'".format(self.region_name)) \
             .option("aws_iam_role", self.redshift_iam_role).mode("append").save()
 
     def _do_write(self, scf, redshift_schema, table_name, primary_key, target_table, ignore_ddl,super_columns,timestamp_columns, date_columns):
@@ -376,8 +376,9 @@ class CDCRedshiftSink:
             .option("postactions", post_query) \
             .option("tempformat", "CSV") \
             .option("s3_endpoint", self.s3_endpoint) \
-            .option("extracopyoptions", "TRUNCATECOLUMNS region '{0}'".format(self.region_name)) \
+            .option("extracopyoptions", "TRUNCATECOLUMNS region '{0}' dateformat 'auto' timeformat 'auto'".format(self.region_name)) \
             .option("aws_iam_role", self.redshift_iam_role).mode("append").save()
+
 
     def run_task(self, item, data_frame):
         task_status = {}
