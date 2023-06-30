@@ -17,17 +17,24 @@ def gen_filter_udf(db, table, cdc_format):
     def filter_table(str_json, ):
         reg_schema = ""
         reg_table = ""
+        record_type = ""
         if cdc_format == "DMS-CDC":
             reg_schema = '"schema-name":"{0}"'.format(db)
             reg_table = '"table-name":"{0}"'.format(table)
+            record_type = '"record-type":"control"'
         elif cdc_format == "FLINK-CDC" or cdc_format == "MSK-DEBEZIUM-CDC":
             reg_schema = '"db":"{0}"'.format(db)
             reg_table = '"table":"{0}"'.format(table)
         schema_pattern = re.compile(reg_schema)
         schema_res = schema_pattern.findall(str_json)
+
         table_pattern = re.compile(reg_table)
         table_res = table_pattern.findall(str_json)
-        if schema_res and table_res:
+
+        control_pattern = re.compile(record_type)
+        control_res = control_pattern.findall(str_json)
+
+        if schema_res and table_res and control_res:
             return True
         else:
             return False
