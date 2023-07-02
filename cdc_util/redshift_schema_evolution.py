@@ -124,6 +124,8 @@ class SchemaEvolution:
                 data_type = "int4"
             elif "bigint" in data_type:
                 data_type = "int8"
+            elif "smallint" in data_type:
+                data_type = "smallint"
             else:
                 cast_type = False
             columns_with_type_dict["col_name"] = name
@@ -143,7 +145,11 @@ class SchemaEvolution:
             insert_sql_columns.append(col_name)
             from_column = col_name
             if cast:
-                from_column = col_name+"::"+data_type
+                if data_type == "smallint":
+                    from_column = "case when trim({col_name}) ~ '^[0-9]+$' then trim({col_name}) else null " \
+                                  "end::smallint as {col_name}".format(col_name=col_name)
+                else:
+                    from_column = col_name+"::"+data_type
             select_sql_columns_with_cast_type.append(from_column)
         return insert_sql_columns, select_sql_columns_with_cast_type
 

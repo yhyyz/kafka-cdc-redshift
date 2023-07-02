@@ -64,6 +64,11 @@ cdc_format = params["cdc_format"].data
 max_offsets_per_trigger = params["max_offsets_per_trigger"].data
 consumer_group = params["consumer_group"].data
 
+tempformat = "CSV"
+tempformat_p = params.get("tempformat")
+if tempformat_p:
+    tempformat = tempformat_p.data
+
 sync_table_list = json.loads(params["sync_table_list"].data)
 redshift_secret_id = params["redshift_secret_id"].data
 redshift_host = params["redshift_host"].data
@@ -110,7 +115,7 @@ def process_batch(data_frame, batchId):
                 rs = CDCRedshiftSink(spark, cdc_format, redshift_schema, redshift_iam_role, redshift_tmpdir,
                                      logger=logger_msg, disable_dataframe_show=disable_msg, host=redshift_host,
                                      port=redshift_port, database=redshift_database, user=redshift_username,
-                                     password=redshift_password, redshift_secret_id=redshift_secret_id , region_name=aws_region,s3_endpoint=s3_endpoint)
+                                     password=redshift_password, redshift_secret_id=redshift_secret_id , region_name=aws_region,s3_endpoint=s3_endpoint,tempformat=tempformat)
                 future = pool.submit(rs.run_task, item, dfc)
                 futures.append(future)
             task_list = []
