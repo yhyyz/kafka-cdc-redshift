@@ -184,6 +184,8 @@ wget -P ./jars  https://repo1.maven.org/maven2/org/apache/commons/commons-pool2/
 aws s3 sync ./jars ${s3_location}/jars/
 
 # job lib
+rm -rf emr-spark-redshift-1.2-SNAPSHOT.jar
+rm -rf spark-sql-kafka-offset-committer-1.0.jar
 wget https://dxs9dnjebzm6y.cloudfront.net/tmp/emr-spark-redshift-1.2-SNAPSHOT.jar
 wget https://dxs9dnjebzm6y.cloudfront.net/tmp/spark-sql-kafka-offset-committer-1.0.jar
 
@@ -196,6 +198,8 @@ aws s3 cp spark-sql-kafka-offset-committer-1.0.jar  ${s3_location}/
 export s3_location=s3://panchao-data/tmp
 # cluster mode
 # 代码中的emr_ec2中cdc_redshift.py和conf的djob-ec2.properties
+rm -rf cdc_redshift.py 
+rm -rf job-ec2.properties
 wget https://raw.githubusercontent.com/yhyyz/kafka-cdc-redshift/main/emr_ec2/cdc_redshift.py
 wget https://raw.githubusercontent.com/yhyyz/kafka-cdc-redshift/main/config/job-ec2.properties
 aws s3 cp cdc_redshift.py  ${s3_location}/
