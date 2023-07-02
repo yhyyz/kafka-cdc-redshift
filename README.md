@@ -153,11 +153,10 @@ aws emr-serverless start-job-run \
 ```shell
 # python lib 
 export s3_location=s3://panchao-data/tmp
-
+deactivate
 rm -rf ./cdc_venv
 rm -rf ./cdc_util_202307030009-1.1-py3-none-any.whl
 rm -rf ./cdc_venv.tar.gz
-deactivate
 
 python3 -m venv cdc_venv
 source cdc_venv/bin/activate
@@ -188,7 +187,7 @@ aws s3 sync ./jars ${s3_location}/jars/
 wget https://dxs9dnjebzm6y.cloudfront.net/tmp/emr-spark-redshift-1.2-SNAPSHOT.jar
 wget https://dxs9dnjebzm6y.cloudfront.net/tmp/spark-sql-kafka-offset-committer-1.0.jar
 
-aws s3 cp emr-spark-redshift-1.2-SNAPSHOT-20230614.jar  ${s3_location}/
+aws s3 cp emr-spark-redshift-1.2-SNAPSHOT.jar  ${s3_location}/
 aws s3 cp spark-sql-kafka-offset-committer-1.0.jar  ${s3_location}/
 
 ```
@@ -215,7 +214,7 @@ spark-submit --master yarn --deploy-mode cluster \
 --conf spark.sql.shuffle.partitions=2 \
 --conf spark.default.parallelism=2 \
 --conf spark.dynamicAllocation.enabled=false \
---conf spark.jars=${s3_location}/emr-spark-redshift-1.2-SNAPSHOT-20230614.jar,${s3_location}/spark-sql-kafka-offset-committer-1.0.jar,${s3_location}/jars/*.jar,/usr/share/aws/redshift/jdbc/RedshiftJDBC.jar,/usr/share/aws/redshift/spark-redshift/lib/spark-avro.jar,/usr/share/aws/redshift/spark-redshift/lib/minimal-json.jar \
+--conf spark.jars=${s3_location}/emr-spark-redshift-1.2-SNAPSHOT.jar,${s3_location}/spark-sql-kafka-offset-committer-1.0.jar,${s3_location}/jars/*.jar,/usr/share/aws/redshift/jdbc/RedshiftJDBC.jar,/usr/share/aws/redshift/spark-redshift/lib/spark-avro.jar,/usr/share/aws/redshift/spark-redshift/lib/minimal-json.jar \
 ${s3_location}/cdc_redshift.py us-east-1 ${s3_location}/job-ec2.properties
 
 
@@ -235,7 +234,7 @@ spark-submit --master yarn --deploy-mode client \
 --conf spark.sql.shuffle.partitions=2 \
 --conf spark.default.parallelism=2 \
 --conf spark.dynamicAllocation.enabled=false \
---conf spark.jars=${s3_location}/emr-spark-redshift-1.2-SNAPSHOT-20230614.jar,${s3_location}/spark-sql-kafka-offset-committer-1.0.jar,${s3_location}/jars/commons-pool2-2.11.1.jar,${s3_location}/jars/kafka-clients-2.8.2.jar,${s3_location}/jars/spark-sql-kafka-0-10_2.12-3.2.1.jar,${s3_location}/jars/spark-token-provider-kafka-0-10_2.12-3.2.1.jar,/usr/share/aws/redshift/jdbc/RedshiftJDBC.jar,/usr/share/aws/redshift/spark-redshift/lib/spark-avro.jar,/usr/share/aws/redshift/spark-redshift/lib/minimal-json.jar \
+--conf spark.jars=${s3_location}/emr-spark-redshift-1.2-SNAPSHOT.jar,${s3_location}/spark-sql-kafka-offset-committer-1.0.jar,${s3_location}/jars/commons-pool2-2.11.1.jar,${s3_location}/jars/kafka-clients-2.8.2.jar,${s3_location}/jars/spark-sql-kafka-0-10_2.12-3.2.1.jar,${s3_location}/jars/spark-token-provider-kafka-0-10_2.12-3.2.1.jar,/usr/share/aws/redshift/jdbc/RedshiftJDBC.jar,/usr/share/aws/redshift/spark-redshift/lib/spark-avro.jar,/usr/share/aws/redshift/spark-redshift/lib/minimal-json.jar \
 ${s3_location}/cdc_redshift.py us-east-1 ${s3_location}/job-ec2.properties
 
 ```
