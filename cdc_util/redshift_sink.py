@@ -18,10 +18,13 @@ def gen_filter_udf(db, table, cdc_format):
         reg_schema = ""
         reg_table = ""
         record_type = ""
+        control_res = False
         if cdc_format == "DMS-CDC":
             reg_schema = '"schema-name":"{0}"'.format(db)
             reg_table = '"table-name":"{0}"'.format(table)
             record_type = '"record-type":"control"'
+            control_pattern = re.compile(record_type)
+            control_res = control_pattern.findall(str_json)
         elif cdc_format == "FLINK-CDC" or cdc_format == "MSK-DEBEZIUM-CDC":
             reg_schema = '"db":"{0}"'.format(db)
             reg_table = '"table":"{0}"'.format(table)
@@ -31,8 +34,8 @@ def gen_filter_udf(db, table, cdc_format):
         table_pattern = re.compile(reg_table)
         table_res = table_pattern.findall(str_json)
 
-        control_pattern = re.compile(record_type)
-        control_res = control_pattern.findall(str_json)
+        # control_pattern = re.compile(record_type)
+        # control_res = control_pattern.findall(str_json)
 
         if schema_res and table_res and (not control_res):
             return True
@@ -63,7 +66,7 @@ class CDCRedshiftSink:
                  disable_dataframe_show="false", host: Optional[str] = None, port: Optional[int] = None,
                  database: Optional[str] = None, user: Optional[str] = None,
                  password: Optional[str] = None, redshift_secret_id: Optional[str] = None,
-                 region_name: Optional[str] = None, s3_endpoint: Optional[str] = None):
+                 region_name: Optional[str] = None, s3_endpoint: Optional[str] = None, tempformat: Optional[str] = None):
         if logger:
             self.logger = logger
         else:
@@ -73,6 +76,10 @@ class CDCRedshiftSink:
         self.spark = spark
         self.cdc_format = cdc_format
         self.s3_endpoint = s3_endpoint
+        if tempformat:
+            self.tempformat = tempformat
+        else:
+            self.tempformat = "CSV"
 
         self.redshift_tmpdir = redshift_tmpdir
         self.redshift_iam_role = redshift_iam_role
@@ -87,6 +94,7 @@ class CDCRedshiftSink:
 
         self.redshift_secret_id = redshift_secret_id
         self.region_name = region_name
+
 
         if redshift_secret_id:
             secret_dict = json.loads(self._get_secret())
@@ -243,11 +251,11 @@ class CDCRedshiftSink:
         if timestamp_columns:
             d_df = self._convert_date_or_timestamp(d_df, time_columns=timestamp_columns, convert_format="timestamp")
             self.logger(
-                "stage table dataframe with timestamp convert {0}".format(self._getDFSchemaJsonString(iud_df)))
+                "stage table dataframe with timestamp convert {0}".format(self._getDFSchemaJsonString(d_df)))
         if date_columns:
             d_df = self._convert_date_or_timestamp(d_df, time_columns=date_columns, convert_format="date")
             self.logger(
-                "stage table dataframe with date convert {0}".format(self._getDFSchemaJsonString(iud_df)))
+                "stage table dataframe with date convert {0}".format(self._getDFSchemaJsonString(d_df)))
 
         self.logger("stage table delete operate dataframe spark write to s3 {0}".format(self._getDFExampleString(d_df)))
         d_df_columns = d_df.columns
@@ -288,7 +296,7 @@ class CDCRedshiftSink:
             .option("password", self.password) \
             .option("tempdir", self.redshift_tmpdir) \
             .option("postactions", post_query) \
-            .option("tempformat", "CSV") \
+            .option("tempformat", self.tempformat) \
             .option("s3_endpoint", self.s3_endpoint) \
             .option("extracopyoptions", "TRUNCATECOLUMNS region '{0}' dateformat 'auto' timeformat 'auto'".format(self.region_name)) \
             .option("aws_iam_role", self.redshift_iam_role).mode("append").save()
@@ -383,7 +391,7 @@ class CDCRedshiftSink:
             .option("password", self.password) \
             .option("tempdir", self.redshift_tmpdir) \
             .option("postactions", post_query) \
-            .option("tempformat", "CSV") \
+            .option("tempformat", self.tempformat) \
             .option("s3_endpoint", self.s3_endpoint) \
             .option("extracopyoptions", "TRUNCATECOLUMNS region '{0}' dateformat 'auto' timeformat 'auto'".format(self.region_name)) \
             .option("aws_iam_role", self.redshift_iam_role).mode("append").save()
