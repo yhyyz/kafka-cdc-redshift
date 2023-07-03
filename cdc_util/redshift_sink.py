@@ -183,11 +183,11 @@ class CDCRedshiftSink:
             partition_key = ",".join(["data." + pk for pk in primary_key.split(",")])
             # iud_op_sql = "select * from (select data.*, metadata.operation as operation, row_number() over (partition by {primary_key} order by metadata.timestamp desc) as seqnum  from {view_name} where (metadata.operation='load' or metadata.operation='delete' or metadata.operation='insert' or metadata.operation='update') and  metadata.`record-type`!='control' and metadata.`record-type`='data') t1 where seqnum=1".format(
             #     primary_key=partition_key, view_name="global_temp." + view_name)
-            iud_op_sql = "select * from (select data.*, metadata.operation as operation, row_number() over (partition by {primary_key} order by metadata.timestamp desc) as seqnum  from (select * from {view_name} where (metadata.operation='load' or metadata.operation='delete' or metadata.operation='insert' or metadata.operation='update') and  metadata.`record-type`!='control' and metadata.`record-type`='data') t1 )t2 where seqnum=1".format(
+            iud_op_sql = "select * from (select data.*, metadata.operation as operation_aws, row_number() over (partition by {primary_key} order by metadata.timestamp desc) as seqnum_aws  from (select * from {view_name} where (metadata.operation='load' or metadata.operation='delete' or metadata.operation='insert' or metadata.operation='update') and  metadata.`record-type`!='control' and metadata.`record-type`='data') t1 )t2 where seqnum_aws=1".format(
                 primary_key=partition_key, view_name="global_temp." + view_name)
         elif self.cdc_format == "FLINK-CDC" or self.cdc_format == "MSK-DEBEZIUM-CDC":
             partition_key = ",".join(["after." + pk for pk in primary_key.split(",")])
-            iud_op_sql = "select * from (select after.*, op as operation, row_number() over (partition by {primary_key} order by ts_ms desc) as seqnum  from {view_name} where (op='u' or op='d' or op='c' or op='r') ) t1 where seqnum=1".format(
+            iud_op_sql = "select * from (select after.*, op as operation_aws, row_number() over (partition by {primary_key} order by ts_ms desc) as seqnum_aws  from {view_name} where (op='u' or op='d' or op='c' or op='r') ) t1 where seqnum_aws=1".format(
                 primary_key=partition_key, view_name="global_temp." + view_name)
 
         return iud_op_sql
@@ -196,11 +196,11 @@ class CDCRedshiftSink:
         d_op_sql = ""
         if self.cdc_format == "DMS-CDC":
             partition_key = ",".join(["data." + pk for pk in primary_key.split(",")])
-            d_op_sql = "select * from (select data.*, metadata.operation as operation, row_number() over (partition by {primary_key} order by metadata.timestamp desc) as seqnum  from {view_name} where (metadata.operation='delete') and  metadata.`record-type`!='control' and metadata.`record-type`='data') t1 where seqnum=1".format(
+            d_op_sql = "select * from (select data.*, metadata.operation as operation_aws, row_number() over (partition by {primary_key} order by metadata.timestamp desc) as seqnum_aws  from {view_name} where (metadata.operation='delete') and  metadata.`record-type`!='control' and metadata.`record-type`='data') t1 where seqnum_aws=1".format(
                 primary_key=partition_key, view_name="global_temp." + view_name)
         elif self.cdc_format == "FLINK-CDC" or self.cdc_format == "MSK-DEBEZIUM-CDC":
             partition_key = ",".join(["after." + pk for pk in primary_key.split(",")])
-            d_op_sql = "select * from (select after.*, op as operation, row_number() over (partition by {primary_key} order by ts_ms desc) as seqnum  from {view_name} where (op='d') ) t1 where seqnum=1".format(
+            d_op_sql = "select * from (select after.*, op as operation_aws, row_number() over (partition by {primary_key} order by ts_ms desc) as seqnum_aws  from {view_name} where (op='d') ) t1 where seqnum_aws=1".format(
                 primary_key=partition_key, view_name="global_temp." + view_name)
 
         return d_op_sql
@@ -229,7 +229,7 @@ class CDCRedshiftSink:
 
         d_op = self._get_cdc_sql_delete_from_view(view_name, primary_key=primary_key)
         self.logger("d operation(delete) sql:" + d_op)
-        cols_to_drop = ['seqnum']
+        cols_to_drop = ['seqnum_aws']
         d_df = self.spark.sql(d_op).drop(*cols_to_drop)
         if super_columns:
             # add super schema metadata
@@ -259,7 +259,7 @@ class CDCRedshiftSink:
 
         self.logger("stage table delete operate dataframe spark write to s3 {0}".format(self._getDFExampleString(d_df)))
         d_df_columns = d_df.columns
-        d_df_columns.remove("operation")
+        d_df_columns.remove("operation_aws")
         on_sql = self._get_on_sql(stage_table_name, redshift_target_table, primary_key)
         se = SchemaEvolution(d_df_columns, d_df.schema, redshift_schema, redshift_target_table_without_schema, self.logger, host=self.host,
                              port=self.port, database=self.database, user=self.user, password=self.password)
@@ -316,7 +316,7 @@ class CDCRedshiftSink:
         iud_op = self._get_cdc_sql_from_view(view_name, primary_key=primary_key)
 
         self.logger("iud operation(load,update,insert,delete) sql:" + iud_op)
-        cols_to_drop = ['seqnum']
+        cols_to_drop = ['seqnum_aws']
         iud_df = self.spark.sql(iud_op).drop(*cols_to_drop)
         # add super schema metadata
         if super_columns:
@@ -347,7 +347,7 @@ class CDCRedshiftSink:
         self.logger("stage table dataframe spark write to s3 {0}".format(self._getDFExampleString(iud_df)))
 
         iud_df_columns = iud_df.columns
-        iud_df_columns.remove("operation")
+        iud_df_columns.remove("operation_aws")
 
         operation_del_value = ""
         if self.cdc_format == "DMS-CDC":
@@ -360,7 +360,7 @@ class CDCRedshiftSink:
                              port=self.port, database=self.database, user=self.user, password=self.password)
         if ignore_ddl and ignore_ddl == "true":
             insert_sql_columns,select_sql_columns_with_cast_type = se.get_columns_with_cast_type_from_redshift()
-            transaction_sql = "begin; delete from {target_table} using {stage_table} where {on_sql}; insert into {target_table}({insert_columns}) select {select_columns} from {stage_table} where operation!='{operation_del_value}'; drop table {stage_table}; end;".format(
+            transaction_sql = "begin; delete from {target_table} using {stage_table} where {on_sql}; insert into {target_table}({insert_columns}) select {select_columns} from {stage_table} where operation_aws!='{operation_del_value}'; drop table {stage_table}; end;".format(
                 stage_table=stage_table_name, target_table=redshift_target_table, on_sql=on_sql,
                 insert_columns=",".join(insert_sql_columns), select_columns=",".join(select_sql_columns_with_cast_type), operation_del_value=operation_del_value)
             if self._check_table_exists(redshift_target_table_without_schema, redshift_schema):
@@ -374,7 +374,7 @@ class CDCRedshiftSink:
             create_target_table_sql = "create table  {target_table} sortkey ({sortkey}) as select {columns} from {stage_table} where 1=3;".format(
                 stage_table=stage_table_name, target_table=redshift_target_table, columns=",".join(iud_df_columns),
                 sortkey=primary_key)
-            transaction_sql = "begin;{scheam_change_sql} delete from {target_table} using {stage_table} where {on_sql}; insert into {target_table}({columns}) select {columns} from {stage_table} where operation!='{operation_del_value}'; drop table {stage_table}; end;".format(
+            transaction_sql = "begin;{scheam_change_sql} delete from {target_table} using {stage_table} where {on_sql}; insert into {target_table}({columns}) select {columns} from {stage_table} where operation_aws!='{operation_del_value}'; drop table {stage_table}; end;".format(
                 stage_table=stage_table_name, target_table=redshift_target_table, on_sql=on_sql,
                 columns=",".join(iud_df_columns), scheam_change_sql=css, operation_del_value=operation_del_value)
             if self._check_table_exists(redshift_target_table_without_schema, redshift_schema):
