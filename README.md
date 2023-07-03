@@ -31,8 +31,10 @@ MySQL Flink CDC到Kafka有三种方式：
 * 20230703 spark写s3的临时存储支持以json格式，可以在properties中配置tempformat = JSON, 但相比CSV作为临时存储，JSON作为存储，copy性能会有损失, 同时写的文件会比较大，因为每条数据都带着json key.
   但JSON得优势是当禁用DDL时，能够在源端列和Redshift列不一致时，依然能成功copy。需要注意的是JSON作为临时存储时，不支持将json字符串列转换为redshift super存储。默认格式是CSV,
   建议值是CSV, 非特定情况，不使用JSON. CSV是比较高效的方式。
+
 * 20230614 支持配置指定timestamp类型列和date列
 ```markdown
+# 通过dateformat 'auto' timeformat 'auto'做了自动转换，所以下方配置方式只需在该文档中(https://docs.aws.amazon.com/redshift/latest/dg/automatic-recognition.html),不支持的自动转换格式是配置,其它情况无需配置。大部分场景是不用配置的
 # timestamp_columns 指定timestamp列，多个列逗号分隔。 如果需要指定格式 col1:col2|yyyy-MM-dd HH:mm:ss, 默认的格式是yyyy-MM-dd\'T\'HH:mm:ss\'Z\', flink cdc和dms cdc解析到json的string默认值。
 # create_date 指定date列，多个列逗号分隔。如果需要指定格式 col1:col2|yyyy-MM-dd，默认格式是flink CDC解析date格式，是1970-01-01年到当前的天数。
 sync_table_list = [\
@@ -85,7 +87,7 @@ wget https://dxs9dnjebzm6y.cloudfront.net/tmp/spark-sql-kafka-offset-committer-1
 # cdc_util build成whl,方便再在多个环境中使用,直接执行如下命令build 或者下载build好的
 python3 setup.py bdist_wheel
 # 编译好的
-https://dxs9dnjebzm6y.cloudfront.net/tmp/cdc_util_202307030009-1.1-py3-none-any.whl
+https://dxs9dnjebzm6y.cloudfront.net/tmp/cdc_util_202307031307-1.1-py3-none-any.whl
 
 # 作业运行需要的配置文件放到了在项目的config下，可以参考job-4x.properties，将文件上传到S3,后边配置Glue作业用
 
@@ -94,7 +96,7 @@ https://dxs9dnjebzm6y.cloudfront.net/tmp/cdc_util_202307030009-1.1-py3-none-any.
 * Glue job配置
 ```shell
 --extra-jars s3://panchao-data/jars/emr-spark-redshift-1.2-SNAPSHOT-07030146.jar,s3://panchao-data/tmp/spark-sql-kafka-offset-committer-1.0.jar
---additional-python-modules  redshift_connector,jproperties,s3://panchao-data/tmp/cdc_util_202307030009-1.1-py3-none-any.whl
+--additional-python-modules  redshift_connector,jproperties,s3://panchao-data/tmp/cdc_util_202307031307-1.1-py3-none-any.whl
 --aws_region us-east-1
 # 注意这个参数 --conf 直接写后边内容，spark.executor.cores 调成了8，表示一个worker可以同时运行的task是8
 # --conf spark.sql.shuffle.partitions=1  --conf spark.default.parallelism=1 设置为1，这是为了降低并行度，保证当多个线程同时写多张表时，都尽可能有资源执行，设置为1时，最终生产的数据文件也是1个，如果数据量很大，生产的一个文件可能会比较大，比如500MB，这样redshift copy花费的时间就会长一些，如果想要加速，就把这两个值调大一些，比如4，这样就会生产4个125M的文件，Redshift并行copy就会快一些，但Glue作业的资源对应就要设置多一些，可以观察执行速度评估
@@ -115,8 +117,8 @@ source cdc_venv/bin/activate
 pip3 install --upgrade pip
 pip3 install redshift_connector jproperties
 # cdc_util是封装好的Spark CDC Redshift 的包，源代码在cdc_util中
-https://dxs9dnjebzm6y.cloudfront.net/tmp/cdc_util_202307030009-1.1-py3-none-any.whl
-pip3 install cdc_util_202307030009-1.1-py3-none-any.whl
+wget https://dxs9dnjebzm6y.cloudfront.net/tmp/cdc_util_202307031307-1.1-py3-none-any.whl
+pip3 install cdc_util_202307031307-1.1-py3-none-any.whl
 
 pip3 install venv-pack
 venv-pack -f -o cdc_venv.tar.gz
@@ -170,8 +172,8 @@ source cdc_venv/bin/activate
 pip3 install --upgrade pip
 pip3 install redshift_connector jproperties
 # cdc_util是封装好的Spark CDC Redshift的包，源代码在cdc_util中
-wget https://dxs9dnjebzm6y.cloudfront.net/tmp/cdc_util_202307030009-1.1-py3-none-any.whl
-pip3 install cdc_util_202307030009-1.1-py3-none-any.whl
+wget https://dxs9dnjebzm6y.cloudfront.net/tmp/cdc_util_202307031307-1.1-py3-none-any.whl
+pip3 install cdc_util_202307031307-1.1-py3-none-any.whl
 
 pip3 install venv-pack
 venv-pack -f -o cdc_venv.tar.gz
