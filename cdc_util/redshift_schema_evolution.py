@@ -139,7 +139,7 @@ class SchemaEvolution:
         insert_sql_columns = []
         select_sql_columns_with_cast_type = []
         for item in col_list:
-            col_name = item["col_name"]
+            col_name = "\""+item["col_name"]+"\""
             data_type = item["data_type"]
             cast = item["cast"]
             insert_sql_columns.append(col_name)
