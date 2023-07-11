@@ -70,7 +70,7 @@ thread_max_workers = int(params["thread_max_workers"].data)
 disable_msg = params["disable_msg"].data
 max_offsets_per_trigger = params["max_offsets_per_trigger"].data
 consumer_group = params["consumer_group"].data
-
+maxerror = int(params["maxerror"].data)
 sync_table_list = json.loads(params["sync_table_list"].data)
 redshift_secret_id = params["redshift_secret_id"].data
 redshift_host = params["redshift_host"].data
@@ -115,7 +115,7 @@ def process_batch(data_frame, batchId):
                 rs = MongoCDCRedshiftSink(spark, redshift_schema, redshift_iam_role, redshift_tmpdir,
                                         logger=logger_msg, disable_dataframe_show=disable_msg, host=redshift_host,
                                      port=redshift_port, database=redshift_database, user=redshift_username,
-                                     password=redshift_password, redshift_secret_id=redshift_secret_id , region_name=aws_region,s3_endpoint=s3_endpoint)
+                                     password=redshift_password, redshift_secret_id=redshift_secret_id , region_name=aws_region,s3_endpoint=s3_endpoint,maxerror=maxerror)
                 future = pool.submit(rs.run_task, item, dfc)
                 futures.append(future)
             task_list = []
