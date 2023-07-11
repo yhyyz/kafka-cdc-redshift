@@ -48,7 +48,7 @@ class MongoCDCRedshiftSink:
                  disable_dataframe_show="false", host: Optional[str] = None, port: Optional[int] = None,
                  database: Optional[str] = None, user: Optional[str] = None,
                  password: Optional[str] = None, redshift_secret_id: Optional[str] = None,
-                 region_name: Optional[str] = None, s3_endpoint: Optional[str] = None):
+                 region_name: Optional[str] = None, s3_endpoint: Optional[str] = None, maxerror: Optional[int] = None):
         if logger:
             self.logger = logger
         else:
@@ -60,6 +60,7 @@ class MongoCDCRedshiftSink:
 
         self.redshift_tmpdir = redshift_tmpdir
         self.redshift_iam_role = redshift_iam_role
+        self.maxerror = maxerror
 
         self.host = host
         self.port = port
@@ -196,7 +197,7 @@ class MongoCDCRedshiftSink:
             .option("postactions", post_query) \
             .option("tempformat", "CSV") \
             .option("s3_endpoint", self.s3_endpoint) \
-            .option("extracopyoptions", "TRUNCATECOLUMNS region '{0}'".format(self.region_name)) \
+            .option("extracopyoptions", "TRUNCATECOLUMNS region '{0}' maxerror {1} dateformat 'auto' timeformat 'auto'".format(self.region_name,self.maxerror)) \
             .option("aws_iam_role", self.redshift_iam_role).mode("append").save()
 
     def run_task(self, item, data_frame):
