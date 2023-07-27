@@ -258,6 +258,23 @@ ${s3_location}/cdc_redshift.py us-east-1 ${s3_location}/job-ec2.properties
 
 ```
 
+#### 监控
+```markdown
+# 可以使用cloudwatch对任务做常规的监控报警
+* KDA Metric:
+  uptime  报警值 < 1000
+  fullRestarts 报警值 > 5
+
+* MSK Metric:
+  Topic级别的ConsumerGroup的SumOffsetLag 报警值,这个根据数据领，先观察作业几个小时，设置一个大于比常规值*2值就可以
+	
+* Glue Metric:
+  glue.driver.jvm.heap.used 报警值： < 1000 (这个单位是字节，当glue作业失败，这个值是missing data)
+
+# 以上所有指标在配置cloudwatch报警时,都在高级配置里配置treat missing data as bad
+#  配置以上报警在cloudwatch发送到SNS, 之后可以按照这个blog发送到钉钉或者企业微信 https://aws.amazon.com/cn/blogs/china/enterprise-wechat-and-dingtalk-receiving-amazon-cloudwatch-alarms/
+```
+
 #### MySQL CDC格式样例
 ```json
 // flink debezium  cdc 和 mak connector debezium cdc,两者格式一样
