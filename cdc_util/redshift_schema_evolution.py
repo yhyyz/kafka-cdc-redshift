@@ -134,23 +134,24 @@ class SchemaEvolution:
             columns_with_type_list.append(columns_with_type_dict)
         return columns_with_type_list
 
-    def get_columns_with_cast_type_from_redshift(self):
+    def get_columns_with_cast_type_from_redshift(self, df_field_name_list):
         col_list = self._get_redshift_table_columns_with_type()
         insert_sql_columns = []
         select_sql_columns_with_cast_type = []
         for item in col_list:
-            col_name = "\""+item["col_name"]+"\""
-            data_type = item["data_type"]
-            cast = item["cast"]
-            insert_sql_columns.append(col_name)
-            from_column = col_name
-            if cast:
-                if data_type == "smallint":
-                    from_column = "case when trim({col_name}) ~ '^[0-9]+$' then trim({col_name}) else null " \
-                                  "end::smallint as {col_name}".format(col_name=col_name)
-                else:
-                    from_column = col_name+"::"+data_type
-            select_sql_columns_with_cast_type.append(from_column)
+            if item["col_name"] in df_field_name_list:
+                col_name = "\""+item["col_name"]+"\""
+                data_type = item["data_type"]
+                cast = item["cast"]
+                insert_sql_columns.append(col_name)
+                from_column = col_name
+                if cast:
+                    if data_type == "smallint":
+                        from_column = "case when trim({col_name}) ~ '^[0-9]+$' then trim({col_name}) else null " \
+                                      "end::smallint as {col_name}".format(col_name=col_name)
+                    else:
+                        from_column = col_name+"::"+data_type
+                select_sql_columns_with_cast_type.append(from_column)
         return insert_sql_columns, select_sql_columns_with_cast_type
 
     def _field_string(self, field):
