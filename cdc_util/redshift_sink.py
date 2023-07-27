@@ -240,6 +240,7 @@ class CDCRedshiftSink:
             for field in d_df.schema.fields:
                 if field.name in super_column_list:
                     sf = StructField(field.name, field.dataType, field.nullable, metadata={"super": True})
+                    # sf = StructField(field.name, field.dataType, field.nullable, metadata={"redshift_type": "super"})
                 else:
                     sf = StructField(field.name, field.dataType, field.nullable)
                 fields.append(sf)
@@ -264,7 +265,11 @@ class CDCRedshiftSink:
         se = SchemaEvolution(d_df_columns, d_df.schema, redshift_schema, redshift_target_table_without_schema, self.logger, host=self.host,
                              port=self.port, database=self.database, user=self.user, password=self.password)
         if ignore_ddl and ignore_ddl == "true":
-            insert_sql_columns, select_sql_columns_with_cast_type = se.get_columns_with_cast_type_from_redshift()
+
+            df_field_name_list = []
+            for field in d_df.schema.fields:
+                df_field_name_list.append(field.name)
+            insert_sql_columns, select_sql_columns_with_cast_type = se.get_columns_with_cast_type_from_redshift(df_field_name_list)
             transaction_sql = "begin; delete from {target_table} using {stage_table} where {on_sql}; insert into {target_table}({insert_columns}) select {select_columns} from {stage_table}; drop table {stage_table}; end;".format(
                 stage_table=stage_table_name, target_table=redshift_target_table, on_sql=on_sql,
                 insert_columns=",".join(insert_sql_columns), select_columns=",".join(select_sql_columns_with_cast_type))
@@ -359,7 +364,12 @@ class CDCRedshiftSink:
         se = SchemaEvolution(iud_df_columns, iud_df.schema, redshift_schema, redshift_target_table_without_schema, self.logger, host=self.host,
                              port=self.port, database=self.database, user=self.user, password=self.password)
         if ignore_ddl and ignore_ddl == "true":
-            insert_sql_columns,select_sql_columns_with_cast_type = se.get_columns_with_cast_type_from_redshift()
+            df_field_name_list = []
+            # for field in iud_df.schema.fields:
+            #     df_field_name_list.append(field.name)
+            #
+            insert_sql_columns,select_sql_columns_with_cast_type = se.get_columns_with_cast_type_from_redshift(iud_df_columns)
+
             transaction_sql = "begin; delete from {target_table} using {stage_table} where {on_sql}; insert into {target_table}({insert_columns}) select {select_columns} from {stage_table} where operation_aws!='{operation_del_value}'; drop table {stage_table}; end;".format(
                 stage_table=stage_table_name, target_table=redshift_target_table, on_sql=on_sql,
                 insert_columns=",".join(insert_sql_columns), select_columns=",".join(select_sql_columns_with_cast_type), operation_del_value=operation_del_value)
