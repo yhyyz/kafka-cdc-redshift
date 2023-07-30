@@ -211,7 +211,9 @@ class CDCRedshiftSink:
                                                                                 target_table=target_table, join_key=pk)
             on_sql.append(tmp)
         return " and ".join(on_sql)
-
+    def close_conn(self):
+        if self.con:
+            self.con.close()
     def _do_write_delete(self, scf, redshift_schema, table_name, primary_key, target_table, ignore_ddl,super_columns, timestamp_columns, date_columns):
         if target_table:
             target_table = target_table+"_delete"
@@ -461,6 +463,7 @@ class CDCRedshiftSink:
                         self._do_write_delete(scf, self.redshift_schema, table_name, primary_key, target_table, ignore_ddl,super_columns,timestamp_columns,date_columns)
                 self.logger("sync the table complete: " + table_name)
                 task_status["status"] = "finished"
+                self.close_conn()
                 return task_status
             else:
                 task_status["status"] = "the table in the current batch has no data"
@@ -468,6 +471,7 @@ class CDCRedshiftSink:
             task_status["status"] = "error"
             task_status["exception"] = "{0}".format(e)
             self.logger(e)
+            self.close_conn()
             return task_status
 
     def _get_secret(self):
