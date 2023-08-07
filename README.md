@@ -24,6 +24,8 @@ MySQL Flink CDC到Kafka有三种方式：
 ```
 
 #### update history
+* 20230807 执行Redshift SQL列名使用引号("col_1"),避免mysql中的列在Redshift中为关键字时执行错误
+
 * 20230730 python redshift jdbc在每个streaming batch结束时关闭jdbc链接,释放文件句柄资源。
 
 * 20230727 当禁用DDL时，源端增加列，Redshift添加列后，CDC数据中还没有收到增加列的数据时，由于staging表列和target表列不一致，造成的写入异常，当前已修复。
