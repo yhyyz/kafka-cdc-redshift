@@ -279,6 +279,11 @@ ${s3_location}/cdc_redshift.py us-east-1 ${s3_location}/job-ec2.properties
 #  配置以上报警在cloudwatch发送到SNS, 之后可以按照这个blog发送到钉钉或者企业微信 https://aws.amazon.com/cn/blogs/china/enterprise-wechat-and-dingtalk-receiving-amazon-cloudwatch-alarms/
 ```
 
+#### DEBUG
+* 在job properties中有disable_msg配置默认`disable_msg=true`表示关闭详细日志输出，调试过程可以打开详细日志数出设置`disable_msg=false`即可。之后在spark driver
+日志中搜索`my_log`即可看到有程序打印出详细日志信息，便于排查错误。需要注意是的生产中一定要将其设置为`disable_msg=true`，因为打印详细日志是非常耗费时间的，详细日志执行的是spark
+的df.show()的action动作，所以非常耗时，因此切记生产将其设置为`disable_msg=true`
+
 #### MySQL CDC格式样例
 ```json
 // flink debezium  cdc 和 mak connector debezium cdc,两者格式一样
