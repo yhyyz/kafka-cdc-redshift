@@ -241,7 +241,8 @@ class CDCRedshiftSink:
             fields = []
             for field in d_df.schema.fields:
                 if field.name in super_column_list:
-                    sf = StructField(field.name, field.dataType, field.nullable, metadata={"super": True})
+                    # metadata={'redshift_type','super'}
+                    sf = StructField(field.name, field.dataType, field.nullable, metadata={"super": True,"redshift_type": "super"})
                     # sf = StructField(field.name, field.dataType, field.nullable, metadata={"redshift_type": "super"})
                 else:
                     sf = StructField(field.name, field.dataType, field.nullable)
@@ -336,7 +337,8 @@ class CDCRedshiftSink:
             fields = []
             for field in iud_df.schema.fields:
                 if field.name in super_column_list:
-                    sf = StructField(field.name, field.dataType, field.nullable, metadata={"super": True})
+                    # metadata={'redshift_type','super'}
+                    sf = StructField(field.name, field.dataType, field.nullable, metadata={"super": True, "redshift_type": "super"})
                 else:
                     sf = StructField(field.name, field.dataType, field.nullable)
                 fields.append(sf)
