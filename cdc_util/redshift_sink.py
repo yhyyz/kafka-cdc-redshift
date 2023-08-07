@@ -207,7 +207,7 @@ class CDCRedshiftSink:
     def _get_on_sql(self, stage_table, target_table, primary_key):
         on_sql = []
         for pk in primary_key.split(","):
-            tmp = "{stage_table}.{join_key} = {target_table}.{join_key}".format(stage_table=stage_table,
+            tmp = '{stage_table}."{join_key}" = {target_table}."{join_key}"'.format(stage_table=stage_table,
                                                                                 target_table=target_table, join_key=pk)
             on_sql.append(tmp)
         return " and ".join(on_sql)
@@ -283,12 +283,15 @@ class CDCRedshiftSink:
         else:
             css = se.get_change_schema_sql()
             se.close_conn()
+            d_df_columns_with_quotes = list(map(lambda x: f'"{x}"', d_df_columns))
+            sort_key_with_quotes = ",".join(list(map(lambda x: f'"{x}"', primary_key.split(","))))
+
             create_target_table_sql = "create table  {target_table} sortkey ({sortkey}) as select {columns} from {stage_table} where 1=3;".format(
-                stage_table=stage_table_name, target_table=redshift_target_table, columns=",".join(d_df_columns),
-                sortkey=primary_key)
+                stage_table=stage_table_name, target_table=redshift_target_table, columns=",".join(d_df_columns_with_quotes),
+                sortkey=sort_key_with_quotes)
             transaction_sql = "begin;{scheam_change_sql} delete from {target_table} using {stage_table} where {on_sql}; insert into {target_table}({columns}) select {columns} from {stage_table}; drop table {stage_table}; end;".format(
                 stage_table=stage_table_name, target_table=redshift_target_table, on_sql=on_sql,
-                columns=",".join(d_df_columns), scheam_change_sql=css)
+                columns=",".join(d_df_columns_with_quotes), scheam_change_sql=css)
             if self._check_table_exists(redshift_target_table_without_schema, redshift_schema):
                 post_query = transaction_sql
             else:
@@ -382,13 +385,15 @@ class CDCRedshiftSink:
         else:
             css = se.get_change_schema_sql()
             se.close_conn()
+            iud_df_columns_with_quotes = list(map(lambda x: f'"{x}"', iud_df_columns))
+            sort_key_with_quotes = ",".join(list(map(lambda x: f'"{x}"', primary_key.split(","))))
             # if redshift target table already exists, do not create table
             create_target_table_sql = "create table  {target_table} sortkey ({sortkey}) as select {columns} from {stage_table} where 1=3;".format(
-                stage_table=stage_table_name, target_table=redshift_target_table, columns=",".join(iud_df_columns),
-                sortkey=primary_key)
+                stage_table=stage_table_name, target_table=redshift_target_table, columns=",".join(iud_df_columns_with_quotes),
+                sortkey=sort_key_with_quotes)
             transaction_sql = "begin;{scheam_change_sql} delete from {target_table} using {stage_table} where {on_sql}; insert into {target_table}({columns}) select {columns} from {stage_table} where operation_aws!='{operation_del_value}'; drop table {stage_table}; end;".format(
                 stage_table=stage_table_name, target_table=redshift_target_table, on_sql=on_sql,
-                columns=",".join(iud_df_columns), scheam_change_sql=css, operation_del_value=operation_del_value)
+                columns=",".join(iud_df_columns_with_quotes), scheam_change_sql=css, operation_del_value=operation_del_value)
             if self._check_table_exists(redshift_target_table_without_schema, redshift_schema):
                 post_query = transaction_sql
             else:

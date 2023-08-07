@@ -24,6 +24,8 @@ MySQL Flink CDC到Kafka有三种方式：
 ```
 
 #### update history
+* 20230807 执行Redshift SQL列名使用引号("col_1"),避免mysql中的列在Redshift中为关键字时执行错误
+
 * 20230730 python redshift jdbc在每个streaming batch结束时关闭jdbc链接,释放文件句柄资源。
 
 * 20230727 当禁用DDL时，源端增加列，Redshift添加列后，CDC数据中还没有收到增加列的数据时，由于staging表列和target表列不一致，造成的写入异常，当前已修复。
@@ -95,7 +97,7 @@ wget https://dxs9dnjebzm6y.cloudfront.net/tmp/spark-sql-kafka-offset-committer-1
 # cdc_util build成whl,方便再在多个环境中使用,直接执行如下命令build 或者下载build好的
 python3 setup.py bdist_wheel
 # 编译好的
-https://dxs9dnjebzm6y.cloudfront.net/tmp/cdc_util_202307302137-1.1-py3-none-any.whl
+https://dxs9dnjebzm6y.cloudfront.net/tmp/cdc_util_202308072350-1.1-py3-none-any.whl
 
 # 作业运行需要的配置文件放到了在项目的config下，可以参考job-4x.properties，将文件上传到S3,后边配置Glue作业用
 
@@ -104,7 +106,7 @@ https://dxs9dnjebzm6y.cloudfront.net/tmp/cdc_util_202307302137-1.1-py3-none-any.
 * Glue job配置
 ```shell
 --extra-jars s3://panchao-data/jars/emr-spark-redshift-1.2-SNAPSHOT-07030146.jar,s3://panchao-data/tmp/spark-sql-kafka-offset-committer-1.0.jar
---additional-python-modules  redshift_connector,jproperties,s3://panchao-data/tmp/cdc_util_202307302137-1.1-py3-none-any.whl
+--additional-python-modules  redshift_connector,jproperties,s3://panchao-data/tmp/cdc_util_202308072350-1.1-py3-none-any.whl
 --aws_region us-east-1
 # 注意这个参数 --conf 直接写后边内容，spark.executor.cores 调成了8，表示一个worker可以同时运行的task是8
 # --conf spark.sql.shuffle.partitions=1  --conf spark.default.parallelism=1 设置为1，这是为了降低并行度，保证当多个线程同时写多张表时，都尽可能有资源执行，设置为1时，最终生产的数据文件也是1个，如果数据量很大，生产的一个文件可能会比较大，比如500MB，这样redshift copy花费的时间就会长一些，如果想要加速，就把这两个值调大一些，比如4，这样就会生产4个125M的文件，Redshift并行copy就会快一些，但Glue作业的资源对应就要设置多一些，可以观察执行速度评估
@@ -125,8 +127,8 @@ source cdc_venv/bin/activate
 pip3 install --upgrade pip
 pip3 install redshift_connector jproperties
 # cdc_util是封装好的Spark CDC Redshift 的包，源代码在cdc_util中
-wget https://dxs9dnjebzm6y.cloudfront.net/tmp/cdc_util_202307302137-1.1-py3-none-any.whl
-pip3 install cdc_util_202307302137-1.1-py3-none-any.whl
+wget https://dxs9dnjebzm6y.cloudfront.net/tmp/cdc_util_202308072350-1.1-py3-none-any.whl
+pip3 install cdc_util_202308072350-1.1-py3-none-any.whl
 
 pip3 install venv-pack
 venv-pack -f -o cdc_venv.tar.gz
@@ -180,8 +182,8 @@ source cdc_venv/bin/activate
 pip3 install --upgrade pip
 pip3 install redshift_connector jproperties
 # cdc_util是封装好的Spark CDC Redshift的包，源代码在cdc_util中
-wget https://dxs9dnjebzm6y.cloudfront.net/tmp/cdc_util_202307302137-1.1-py3-none-any.whl
-pip3 install cdc_util_202307302137-1.1-py3-none-any.whl
+wget https://dxs9dnjebzm6y.cloudfront.net/tmp/cdc_util_202308072350-1.1-py3-none-any.whl
+pip3 install cdc_util_202308072350-1.1-py3-none-any.whl
 
 pip3 install venv-pack
 venv-pack -f -o cdc_venv.tar.gz

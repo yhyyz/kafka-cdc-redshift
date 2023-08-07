@@ -178,7 +178,7 @@ class SchemaEvolution:
             string_type = "DECIMAL({0},{1})".format(field.dataType.precision, field.dataType.scale)
         if string_type:
             nullable = "" if field.nullable else "NOT NULL"
-            res = field.name + " " + string_type + " " + nullable
+            res = f'"{field.name}"' + " " + string_type + " " + nullable
             return res.strip()
         else:
             raise Exception("not support data type: " + field.simpleString())
@@ -193,7 +193,7 @@ class SchemaEvolution:
                     break
             if col_field:
                 col_string = self._field_string(col_field)
-                add_columns_sql = "alter table {0}.{1} add column {2};".format(self.redshift_schema, self.table, col_string)
+                add_columns_sql = 'alter table {0}.{1} add column {2};'.format(self.redshift_schema, self.table, col_string)
                 sql_list.append(add_columns_sql)
         return sql_list
 
@@ -204,7 +204,7 @@ class SchemaEvolution:
     def _gen_drop_col_sql(self):
         sql_list = []
         for col in self.drop_columns:
-            drop_columns_sql = "alter table {0}.{1} drop column {2};".format(self.redshift_schema, self.table, col)
+            drop_columns_sql = 'alter table {0}.{1} drop column "{2}";'.format(self.redshift_schema, self.table, col)
             sql_list.append(drop_columns_sql)
         return sql_list
 
