@@ -217,12 +217,15 @@ class CDCRedshiftSink:
     def _do_write_delete(self, scf, redshift_schema, table_name, primary_key, target_table, ignore_ddl,super_columns, timestamp_columns, date_columns):
         if target_table:
             target_table = target_table+"_delete"
-            stage_table_name = redshift_schema + "." + "stage_table_" + target_table
+            # stage_table_name = redshift_schema + "." + "stage_table_" + target_table
+            stage_table_name = "stage_table_" + target_table
+
             redshift_target_table = redshift_schema + "." + target_table
             redshift_target_table_without_schema = target_table
         else:
             table_name = table_name+"_delete"
-            stage_table_name = redshift_schema + "." + "stage_table_" + table_name
+            # stage_table_name = redshift_schema + "." + "stage_table_" + table_name
+            stage_table_name = "stage_table_" + table_name
             redshift_target_table = redshift_schema + "." + table_name
             redshift_target_table_without_schema = table_name
 
@@ -314,11 +317,13 @@ class CDCRedshiftSink:
 
     def _do_write(self, scf, redshift_schema, table_name, primary_key, target_table, ignore_ddl,super_columns,timestamp_columns, date_columns):
         if target_table:
-            stage_table_name = redshift_schema + "." + "stage_table_" + target_table
+            # stage_table_name = redshift_schema + "." + "stage_table_" + target_table
+            stage_table_name = "stage_table_" + target_table
             redshift_target_table = redshift_schema + "." + target_table
             redshift_target_table_without_schema = target_table
         else:
-            stage_table_name = redshift_schema + "." + "stage_table_" + table_name
+            # stage_table_name = redshift_schema + "." + "stage_table_" + table_name
+            stage_table_name = "stage_table_" + table_name
             redshift_target_table = redshift_schema + "." + table_name
             redshift_target_table_without_schema = table_name
         view_name = "kafka_source_" + table_name
