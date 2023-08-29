@@ -142,7 +142,14 @@ class CDCRedshiftSink:
             cursor.execute(sql_str)
             res = cursor.fetchall()
             return res
+    def _run_sql(self, sql_str,schema):
 
+        with self.con.cursor() as cursor:
+            cursor.execute("set search_path to '$user', public, {0}".format(schema))
+            for sql in sql_str.split(";"):
+                if sql != '':
+                    cursor.execute(sql.strip())
+            self.con.commit()
     def _check_table_exists(self, table, schema):
         sql = "select distinct tablename from pg_table_def where tablename = '{0}' and schemaname='{1}'".format(table,
                                                                                                                 schema)
@@ -273,7 +280,7 @@ class CDCRedshiftSink:
             for field in d_df.schema.fields:
                 df_field_name_list.append(field.name)
             insert_sql_columns, select_sql_columns_with_cast_type = se.get_columns_with_cast_type_from_redshift(df_field_name_list)
-            transaction_sql = "begin; delete from {target_table} using {stage_table} where {on_sql}; insert into {target_table}({insert_columns}) select {select_columns} from {stage_table}; drop table {stage_table}; end;".format(
+            transaction_sql = "begin; delete from {target_table} using {stage_table} where {on_sql}; insert into {target_table}({insert_columns}) select {select_columns} from {stage_table}; truncate table {stage_table}; end;".format(
                 stage_table=stage_table_name, target_table=redshift_target_table, on_sql=on_sql,
                 insert_columns=",".join(insert_sql_columns), select_columns=",".join(select_sql_columns_with_cast_type))
             if self._check_table_exists(redshift_target_table_without_schema, redshift_schema):
@@ -290,7 +297,7 @@ class CDCRedshiftSink:
             create_target_table_sql = "create table  {target_table} sortkey ({sortkey}) as select {columns} from {stage_table} where 1=3;".format(
                 stage_table=stage_table_name, target_table=redshift_target_table, columns=",".join(d_df_columns_with_quotes),
                 sortkey=sort_key_with_quotes)
-            transaction_sql = "begin;{scheam_change_sql} delete from {target_table} using {stage_table} where {on_sql}; insert into {target_table}({columns}) select {columns} from {stage_table}; drop table {stage_table}; end;".format(
+            transaction_sql = "begin;{scheam_change_sql} delete from {target_table} using {stage_table} where {on_sql}; insert into {target_table}({columns}) select {columns} from {stage_table}; truncate table {stage_table}; end;".format(
                 stage_table=stage_table_name, target_table=redshift_target_table, on_sql=on_sql,
                 columns=",".join(d_df_columns_with_quotes), scheam_change_sql=css)
             if self._check_table_exists(redshift_target_table_without_schema, redshift_schema):
@@ -299,19 +306,38 @@ class CDCRedshiftSink:
                 post_query = transaction_sql.replace("begin;", "begin; {0}".format(create_target_table_sql))
 
         self.logger("spark redshift jdbc transaction sql(save delete data) after copy stage table : " + post_query)
-        d_df.write \
-            .format("io.github.spark_redshift_community.spark.redshift") \
-            .option("url", "jdbc:redshift://{0}:{1}/{2}".format(self.host, self.port, self.database)) \
-            .option("dbtable", stage_table_name) \
-            .option("user", self.user) \
-            .option("password", self.password) \
-            .option("tempdir", self.redshift_tmpdir) \
-            .option("postactions", post_query) \
-            .option("tempformat", self.tempformat) \
-            .option("s3_endpoint", self.s3_endpoint) \
-            .option("extracopyoptions", "TRUNCATECOLUMNS region '{0}' maxerror {1} dateformat 'auto' timeformat 'auto'".format(self.region_name, self.maxerror)) \
-            .option("aws_iam_role", self.redshift_iam_role).mode("append").save()
-
+        try:
+            d_df.write \
+                .format("io.github.spark_redshift_community.spark.redshift") \
+                .option("url", "jdbc:redshift://{0}:{1}/{2}".format(self.host, self.port, self.database)) \
+                .option("dbtable", stage_table_name) \
+                .option("user", self.user) \
+                .option("password", self.password) \
+                .option("tempdir", self.redshift_tmpdir) \
+                .option("postactions", post_query) \
+                .option("tempformat", self.tempformat) \
+                .option("s3_endpoint", self.s3_endpoint) \
+                .option("extracopyoptions", "TRUNCATECOLUMNS region '{0}' maxerror {1} dateformat 'auto' timeformat 'auto'".format(self.region_name, self.maxerror)) \
+                .option("aws_iam_role", self.redshift_iam_role).mode("append").save()
+        except Exception as e:
+            self.logger(e)
+            drop_stage_table_sql = "drop table if exists {stage_table}".format(stage_table=stage_table_name)
+            # print("retry_write and drop stage: "+drop_stage_table_sql)
+            self._run_sql(drop_stage_table_sql, redshift_schema)
+            d_df.write \
+                .format("io.github.spark_redshift_community.spark.redshift") \
+                .option("url", "jdbc:redshift://{0}:{1}/{2}".format(self.host, self.port, self.database)) \
+                .option("dbtable", stage_table_name) \
+                .option("user", self.user) \
+                .option("password", self.password) \
+                .option("tempdir", self.redshift_tmpdir) \
+                .option("postactions", post_query) \
+                .option("tempformat", self.tempformat) \
+                .option("s3_endpoint", self.s3_endpoint) \
+                .option("extracopyoptions",
+                        "TRUNCATECOLUMNS region '{0}' maxerror {1} dateformat 'auto' timeformat 'auto'".format(
+                            self.region_name, self.maxerror)) \
+                .option("aws_iam_role", self.redshift_iam_role).mode("append").save()
     def _do_write(self, scf, redshift_schema, table_name, primary_key, target_table, ignore_ddl,super_columns,timestamp_columns, date_columns):
         if target_table:
             stage_table_name = redshift_schema + "." + "stage_table_" + target_table
@@ -377,7 +403,7 @@ class CDCRedshiftSink:
             #
             insert_sql_columns,select_sql_columns_with_cast_type = se.get_columns_with_cast_type_from_redshift(iud_df_columns)
 
-            transaction_sql = "begin; delete from {target_table} using {stage_table} where {on_sql}; insert into {target_table}({insert_columns}) select {select_columns} from {stage_table} where operation_aws!='{operation_del_value}'; drop table {stage_table}; end;".format(
+            transaction_sql = "begin; delete from {target_table} using {stage_table} where {on_sql}; insert into {target_table}({insert_columns}) select {select_columns} from {stage_table} where operation_aws!='{operation_del_value}'; truncate table {stage_table}; end;".format(
                 stage_table=stage_table_name, target_table=redshift_target_table, on_sql=on_sql,
                 insert_columns=",".join(insert_sql_columns), select_columns=",".join(select_sql_columns_with_cast_type), operation_del_value=operation_del_value)
             if self._check_table_exists(redshift_target_table_without_schema, redshift_schema):
@@ -393,7 +419,7 @@ class CDCRedshiftSink:
             create_target_table_sql = "create table  {target_table} sortkey ({sortkey}) as select {columns} from {stage_table} where 1=3;".format(
                 stage_table=stage_table_name, target_table=redshift_target_table, columns=",".join(iud_df_columns_with_quotes),
                 sortkey=sort_key_with_quotes)
-            transaction_sql = "begin;{scheam_change_sql} delete from {target_table} using {stage_table} where {on_sql}; insert into {target_table}({columns}) select {columns} from {stage_table} where operation_aws!='{operation_del_value}'; drop table {stage_table}; end;".format(
+            transaction_sql = "begin;{scheam_change_sql} delete from {target_table} using {stage_table} where {on_sql}; insert into {target_table}({columns}) select {columns} from {stage_table} where operation_aws!='{operation_del_value}'; truncate table {stage_table}; end;".format(
                 stage_table=stage_table_name, target_table=redshift_target_table, on_sql=on_sql,
                 columns=",".join(iud_df_columns_with_quotes), scheam_change_sql=css, operation_del_value=operation_del_value)
             if self._check_table_exists(redshift_target_table_without_schema, redshift_schema):
@@ -402,18 +428,38 @@ class CDCRedshiftSink:
                 post_query = transaction_sql.replace("begin;", "begin; {0}".format(create_target_table_sql))
 
         self.logger("spark redshift jdbc transaction sql after copy stage table : " + post_query)
-        iud_df.write \
-            .format("io.github.spark_redshift_community.spark.redshift") \
-            .option("url", "jdbc:redshift://{0}:{1}/{2}".format(self.host, self.port, self.database)) \
-            .option("dbtable", stage_table_name) \
-            .option("user", self.user) \
-            .option("password", self.password) \
-            .option("tempdir", self.redshift_tmpdir) \
-            .option("postactions", post_query) \
-            .option("tempformat", self.tempformat) \
-            .option("s3_endpoint", self.s3_endpoint) \
-            .option("extracopyoptions", "TRUNCATECOLUMNS region '{0}' maxerror {1} dateformat 'auto' timeformat 'auto'".format(self.region_name, self.maxerror)) \
-            .option("aws_iam_role", self.redshift_iam_role).mode("append").save()
+        try:
+            iud_df.write \
+                .format("io.github.spark_redshift_community.spark.redshift") \
+                .option("url", "jdbc:redshift://{0}:{1}/{2}".format(self.host, self.port, self.database)) \
+                .option("dbtable", stage_table_name) \
+                .option("user", self.user) \
+                .option("password", self.password) \
+                .option("tempdir", self.redshift_tmpdir) \
+                .option("postactions", post_query) \
+                .option("tempformat", self.tempformat) \
+                .option("s3_endpoint", self.s3_endpoint) \
+                .option("extracopyoptions", "TRUNCATECOLUMNS region '{0}' maxerror {1} dateformat 'auto' timeformat 'auto'".format(self.region_name, self.maxerror)) \
+                .option("aws_iam_role", self.redshift_iam_role).mode("append").save()
+        except Exception as e:
+            self.logger(e)
+            drop_stage_table_sql = "drop table if exists {stage_table}".format(stage_table=stage_table_name)
+            #print("retry_write and drop stage: "+drop_stage_table_sql)
+            self._run_sql(drop_stage_table_sql, redshift_schema)
+            iud_df.write \
+                .format("io.github.spark_redshift_community.spark.redshift") \
+                .option("url", "jdbc:redshift://{0}:{1}/{2}".format(self.host, self.port, self.database)) \
+                .option("dbtable", stage_table_name) \
+                .option("user", self.user) \
+                .option("password", self.password) \
+                .option("tempdir", self.redshift_tmpdir) \
+                .option("postactions", post_query) \
+                .option("tempformat", self.tempformat) \
+                .option("s3_endpoint", self.s3_endpoint) \
+                .option("extracopyoptions",
+                        "TRUNCATECOLUMNS region '{0}' maxerror {1} dateformat 'auto' timeformat 'auto'".format(
+                            self.region_name, self.maxerror)) \
+                .option("aws_iam_role", self.redshift_iam_role).mode("append").save()
 
 
     def run_task(self, item, data_frame):
