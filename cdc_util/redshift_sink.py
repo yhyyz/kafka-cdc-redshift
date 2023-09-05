@@ -201,7 +201,7 @@ class CDCRedshiftSink:
                 primary_key=partition_key, view_name="global_temp." + view_name)
         elif self.cdc_format == "CANAL-CDC":
             partition_key = ",".join(["data." + pk for pk in primary_key.split(",")])
-            iud_op_sql = "select * from (select data.*, type as operation_aws, row_number() over (partition by {primary_key} order by ts,data.data_index desc) as seqnum_aws  from {view_name} where (type='INSERT' or type='UPDATE' or type='DELETE') ) t1 where seqnum_aws=1".format(
+            iud_op_sql = "select * from (select data.*, type as operation_aws, row_number() over (partition by {primary_key} order by ts,data.data_index_aws desc) as seqnum_aws  from {view_name} where (type='INSERT' or type='UPDATE' or type='DELETE') ) t1 where seqnum_aws=1".format(
                 primary_key=partition_key, view_name="global_temp." + view_name)
 
         return iud_op_sql
@@ -218,7 +218,7 @@ class CDCRedshiftSink:
                 primary_key=partition_key, view_name="global_temp." + view_name)
         elif self.cdc_format == "CANAL-CDC":
             partition_key = ",".join(["data." + pk for pk in primary_key.split(",")])
-            d_op_sql = "select * from (select data.*, type as operation_aws, row_number() over (partition by {primary_key} order by ts,data_index desc) as seqnum_aws  from {view_name} where (type='DELETE') ) t1 where seqnum_aws=1".format(
+            d_op_sql = "select * from (select data.*, type as operation_aws, row_number() over (partition by {primary_key} order by ts,data.data_index_aws desc) as seqnum_aws  from {view_name} where (type='DELETE') ) t1 where seqnum_aws=1".format(
                 primary_key=partition_key, view_name="global_temp." + view_name)
         return d_op_sql
     def _get_on_sql(self, stage_table, target_table, primary_key):
@@ -242,15 +242,18 @@ class CDCRedshiftSink:
             stage_table_name = redshift_schema + "." + "stage_table_" + table_name
             redshift_target_table = redshift_schema + "." + table_name
             redshift_target_table_without_schema = table_name
+        cols_to_drop = ['seqnum_aws']
         if self.cdc_format == "CANAL-CDC":
-            scf = scf.withColumn("data", transform("data", lambda x, i: x.withField("data_index", i)))
+            scf = scf.withColumn("data", transform("data", lambda x, i: x.withField("data_index_aws", i)))
             scf = scf.withColumn("data", explode("data"))
+            cols_to_drop = ['seqnum_aws', "data_index_aws"]
         view_name = "kafka_source_" + table_name
         scf.createOrReplaceGlobalTempView(view_name)
 
         d_op = self._get_cdc_sql_delete_from_view(view_name, primary_key=primary_key)
         self.logger("d operation(delete) sql:" + d_op)
-        cols_to_drop = ['seqnum_aws']
+
+
         d_df = self.spark.sql(d_op).drop(*cols_to_drop)
         if super_columns:
             # add super schema metadata
@@ -332,6 +335,7 @@ class CDCRedshiftSink:
                 .option("extracopyoptions", "TRUNCATECOLUMNS region '{0}' maxerror {1} dateformat 'auto' timeformat 'auto'".format(self.region_name, self.maxerror)) \
                 .option("aws_iam_role", self.redshift_iam_role).mode("append").save()
         except Exception as e:
+            self.logger("first write {0} error, drop staging table and create".format(stage_table_name))
             self.logger(e)
             drop_stage_table_sql = "drop table if exists {stage_table}".format(stage_table=stage_table_name)
             # print("retry_write and drop stage: "+drop_stage_table_sql)
@@ -361,15 +365,17 @@ class CDCRedshiftSink:
             redshift_target_table_without_schema = table_name
         view_name = "kafka_source_" + table_name
 
+        cols_to_drop = ['seqnum_aws']
         if self.cdc_format == "CANAL-CDC":
-            scf = scf.withColumn("data", transform("data", lambda x, i: x.withField("data_index", i)))
+            scf = scf.withColumn("data", transform("data", lambda x, i: x.withField("data_index_aws", i)))
             scf = scf.withColumn("data", explode("data"))
+            cols_to_drop = ['seqnum_aws',"data_index_aws"]
         scf.createOrReplaceGlobalTempView(view_name)
 
         iud_op = self._get_cdc_sql_from_view(view_name, primary_key=primary_key)
 
         self.logger("iud operation(load,update,insert,delete) sql:" + iud_op)
-        cols_to_drop = ['seqnum_aws']
+
         iud_df = self.spark.sql(iud_op).drop(*cols_to_drop)
         # add super schema metadata
         if super_columns:
@@ -460,6 +466,7 @@ class CDCRedshiftSink:
                 .option("extracopyoptions", "TRUNCATECOLUMNS region '{0}' maxerror {1} dateformat 'auto' timeformat 'auto'".format(self.region_name, self.maxerror)) \
                 .option("aws_iam_role", self.redshift_iam_role).mode("append").save()
         except Exception as e:
+            self.logger("first write {0} error, drop staging table and create".format(stage_table_name))
             self.logger(e)
             drop_stage_table_sql = "drop table if exists {stage_table}".format(stage_table=stage_table_name)
             #print("retry_write and drop stage: "+drop_stage_table_sql)
