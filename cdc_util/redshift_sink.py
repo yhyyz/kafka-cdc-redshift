@@ -4,7 +4,7 @@ from pyspark.sql.types import StructType, StructField, StringType, IntegerType
 from pyspark.sql.functions import from_json
 from pyspark.sql.functions import udf
 from pyspark.sql.types import *
-from pyspark.sql.functions import col,to_timestamp,to_date,date_add,expr
+from pyspark.sql.functions import col,to_timestamp,to_date,date_add,expr,transform,explode
 import redshift_connector
 from cdc_util.redshift_schema_evolution import SchemaEvolution
 import json
@@ -27,6 +27,9 @@ def gen_filter_udf(db, table, cdc_format):
             control_res = control_pattern.findall(str_json)
         elif cdc_format == "FLINK-CDC" or cdc_format == "MSK-DEBEZIUM-CDC":
             reg_schema = '"db":"{0}"'.format(db)
+            reg_table = '"table":"{0}"'.format(table)
+        elif cdc_format == "CANAL-CDC":
+            reg_schema = '"database":"{0}"'.format(db)
             reg_table = '"table":"{0}"'.format(table)
         schema_pattern = re.compile(reg_schema)
         schema_res = schema_pattern.findall(str_json)
@@ -196,6 +199,10 @@ class CDCRedshiftSink:
             partition_key = ",".join(["after." + pk for pk in primary_key.split(",")])
             iud_op_sql = "select * from (select after.*, op as operation_aws, row_number() over (partition by {primary_key} order by ts_ms desc) as seqnum_aws  from {view_name} where (op='u' or op='d' or op='c' or op='r') ) t1 where seqnum_aws=1".format(
                 primary_key=partition_key, view_name="global_temp." + view_name)
+        elif self.cdc_format == "CANAL-CDC":
+            partition_key = ",".join(["data." + pk for pk in primary_key.split(",")])
+            iud_op_sql = "select * from (select data.*, type as operation_aws, row_number() over (partition by {primary_key} order by ts,data.data_index desc) as seqnum_aws  from {view_name} where (type='INSERT' or type='UPDATE' or type='DELETE') ) t1 where seqnum_aws=1".format(
+                primary_key=partition_key, view_name="global_temp." + view_name)
 
         return iud_op_sql
 
@@ -209,7 +216,10 @@ class CDCRedshiftSink:
             partition_key = ",".join(["after." + pk for pk in primary_key.split(",")])
             d_op_sql = "select * from (select after.*, op as operation_aws, row_number() over (partition by {primary_key} order by ts_ms desc) as seqnum_aws  from {view_name} where (op='d') ) t1 where seqnum_aws=1".format(
                 primary_key=partition_key, view_name="global_temp." + view_name)
-
+        elif self.cdc_format == "CANAL-CDC":
+            partition_key = ",".join(["data." + pk for pk in primary_key.split(",")])
+            d_op_sql = "select * from (select data.*, type as operation_aws, row_number() over (partition by {primary_key} order by ts,data_index desc) as seqnum_aws  from {view_name} where (type='DELETE') ) t1 where seqnum_aws=1".format(
+                primary_key=partition_key, view_name="global_temp." + view_name)
         return d_op_sql
     def _get_on_sql(self, stage_table, target_table, primary_key):
         on_sql = []
@@ -232,7 +242,9 @@ class CDCRedshiftSink:
             stage_table_name = redshift_schema + "." + "stage_table_" + table_name
             redshift_target_table = redshift_schema + "." + table_name
             redshift_target_table_without_schema = table_name
-
+        if self.cdc_format == "CANAL-CDC":
+            scf = scf.withColumn("data", transform("data", lambda x, i: x.withField("data_index", i)))
+            scf = scf.withColumn("data", explode("data"))
         view_name = "kafka_source_" + table_name
         scf.createOrReplaceGlobalTempView(view_name)
 
@@ -348,6 +360,10 @@ class CDCRedshiftSink:
             redshift_target_table = redshift_schema + "." + table_name
             redshift_target_table_without_schema = table_name
         view_name = "kafka_source_" + table_name
+
+        if self.cdc_format == "CANAL-CDC":
+            scf = scf.withColumn("data", transform("data", lambda x, i: x.withField("data_index", i)))
+            scf = scf.withColumn("data", explode("data"))
         scf.createOrReplaceGlobalTempView(view_name)
 
         iud_op = self._get_cdc_sql_from_view(view_name, primary_key=primary_key)
@@ -390,6 +406,8 @@ class CDCRedshiftSink:
         operation_del_value = ""
         if self.cdc_format == "DMS-CDC":
             operation_del_value = "delete"
+        elif self.cdc_format == "CANAL-CDC":
+            operation_del_value = "DELETE"
         elif self.cdc_format == "FLINK-CDC" or self.cdc_format == "MSK-DEBEZIUM-CDC":
             operation_del_value = "d"
         on_sql = self._get_on_sql(stage_table_name, redshift_target_table, primary_key)
@@ -539,7 +557,6 @@ class CDCRedshiftSink:
             service_name='secretsmanager',
             region_name=region_name
         )
-
         try:
             get_secret_value_response = client.get_secret_value(
                 SecretId=secret_name

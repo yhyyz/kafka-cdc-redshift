@@ -132,11 +132,18 @@ def process_batch(data_frame, batchId):
         dfc.unpersist()
         logger.info(job_name + " - my_log - finish batch id: " + str(batchId))
 
-
-save_to_redshift = source_data \
-    .writeStream \
-    .outputMode("append") \
-    .trigger(processingTime=checkpoint_interval) \
+# availableNow only works spark3.3+
+if checkpoint_interval != "availableNow":
+    dsw = source_data \
+        .writeStream \
+        .outputMode("append") \
+        .trigger(processingTime=checkpoint_interval)
+else:
+    dsw = source_data \
+        .writeStream \
+        .outputMode("append") \
+        .trigger(availableNow=True)
+save_to_redshift = dsw \
     .foreachBatch(process_batch) \
     .option("checkpointLocation", checkpoint_location) \
     .start()
