@@ -201,7 +201,7 @@ class CDCRedshiftSink:
                 primary_key=partition_key, view_name="global_temp." + view_name)
         elif self.cdc_format == "CANAL-CDC":
             partition_key = ",".join(["data." + pk for pk in primary_key.split(",")])
-            iud_op_sql = "select * from (select data.*, type as operation_aws, row_number() over (partition by {primary_key} order by ts,data.data_index_aws desc) as seqnum_aws  from {view_name} where (type='INSERT' or type='UPDATE' or type='DELETE') ) t1 where seqnum_aws=1".format(
+            iud_op_sql = "select * from (select data.*, type as operation_aws, row_number() over (partition by {primary_key} order by ts desc ,data.data_index_aws desc) as seqnum_aws  from {view_name} where (type='INSERT' or type='UPDATE' or type='DELETE') ) t1 where seqnum_aws=1".format(
                 primary_key=partition_key, view_name="global_temp." + view_name)
 
         return iud_op_sql
@@ -218,7 +218,7 @@ class CDCRedshiftSink:
                 primary_key=partition_key, view_name="global_temp." + view_name)
         elif self.cdc_format == "CANAL-CDC":
             partition_key = ",".join(["data." + pk for pk in primary_key.split(",")])
-            d_op_sql = "select * from (select data.*, type as operation_aws, row_number() over (partition by {primary_key} order by ts,data.data_index_aws desc) as seqnum_aws  from {view_name} where (type='DELETE') ) t1 where seqnum_aws=1".format(
+            d_op_sql = "select * from (select data.*, type as operation_aws, row_number() over (partition by {primary_key} order by ts desc,data.data_index_aws desc) as seqnum_aws  from {view_name} where (type='DELETE') ) t1 where seqnum_aws=1".format(
                 primary_key=partition_key, view_name="global_temp." + view_name)
         return d_op_sql
     def _get_on_sql(self, stage_table, target_table, primary_key):
