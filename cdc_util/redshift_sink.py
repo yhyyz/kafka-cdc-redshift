@@ -11,6 +11,9 @@ import json
 from typing import Optional
 import base64
 import re
+import hashlib
+
+
 
 
 def gen_filter_udf(db, table, cdc_format):
@@ -247,7 +250,12 @@ class CDCRedshiftSink:
             scf = scf.withColumn("data", transform("data", lambda x, i: x.withField("data_index_aws", i)))
             scf = scf.withColumn("data", explode("data"))
             cols_to_drop = ['seqnum_aws', "data_index_aws"]
-        view_name = "kafka_source_" + table_name
+
+        md5 = hashlib.md5()
+        md5.update(table_name.encode('utf-8'))
+        # 正则匹配时，名字会有特殊字符
+        table_name_md5 = md5.hexdigest()
+        view_name = "kafka_source_" + table_name_md5
         scf.createOrReplaceGlobalTempView(view_name)
 
         d_op = self._get_cdc_sql_delete_from_view(view_name, primary_key=primary_key)
@@ -363,7 +371,12 @@ class CDCRedshiftSink:
             stage_table_name = redshift_schema + "." + "stage_table_" + table_name
             redshift_target_table = redshift_schema + "." + table_name
             redshift_target_table_without_schema = table_name
-        view_name = "kafka_source_" + table_name
+
+        md5 = hashlib.md5()
+        md5.update(table_name.encode('utf-8'))
+        # 正则匹配时，名字会有特殊字符
+        table_name_md5 = md5.hexdigest()
+        view_name = "kafka_source_" + table_name_md5
 
         cols_to_drop = ['seqnum_aws']
         if self.cdc_format == "CANAL-CDC":
@@ -420,6 +433,7 @@ class CDCRedshiftSink:
 
         se = SchemaEvolution(iud_df_columns, iud_df.schema, redshift_schema, redshift_target_table_without_schema, self.logger, host=self.host,
                              port=self.port, database=self.database, user=self.user, password=self.password)
+        sort_key_with_quotes = ",".join(list(map(lambda x: f'"{x}"', primary_key.split(","))))
         if ignore_ddl and ignore_ddl == "true":
             df_field_name_list = []
             # for field in iud_df.schema.fields:
@@ -427,9 +441,11 @@ class CDCRedshiftSink:
             #
             insert_sql_columns,select_sql_columns_with_cast_type = se.get_columns_with_cast_type_from_redshift(iud_df_columns)
 
-            transaction_sql = "begin; delete from {target_table} using {stage_table} where {on_sql}; insert into {target_table}({insert_columns}) select {select_columns} from {stage_table} where operation_aws!='{operation_del_value}'; truncate table {stage_table}; end;".format(
+            # staging_sql = "select {select_columns} from {stage_table} where operation_aws!='{operation_del_value}'".format(select_columns=",".join(select_sql_columns_with_cast_type),stage_table=stage_table_name,operation_del_value=operation_del_value)
+            staging_sql = "select {select_columns} from (select {select_columns} , ROW_NUMBER() OVER( PARTITION BY {sort_key_with_quotes} ORDER BY {sort_key_with_quotes}) AS seq_number from {stage_table} where operation_aws!='{operation_del_value}') where seq_number=1".format(select_columns=",".join(select_sql_columns_with_cast_type),stage_table=stage_table_name,operation_del_value=operation_del_value,sort_key_with_quotes=sort_key_with_quotes)
+            transaction_sql = "begin; delete from {target_table} using {stage_table} where {on_sql}; insert into {target_table}({insert_columns}) {staging_sql}; truncate table {stage_table}; end;".format(
                 stage_table=stage_table_name, target_table=redshift_target_table, on_sql=on_sql,
-                insert_columns=",".join(insert_sql_columns), select_columns=",".join(select_sql_columns_with_cast_type), operation_del_value=operation_del_value)
+                insert_columns=",".join(insert_sql_columns), select_columns=",".join(select_sql_columns_with_cast_type), operation_del_value=operation_del_value,staging_sql=staging_sql)
             if self._check_table_exists(redshift_target_table_without_schema, redshift_schema):
                 post_query = transaction_sql
             else:
@@ -438,14 +454,18 @@ class CDCRedshiftSink:
             css = se.get_change_schema_sql()
             se.close_conn()
             iud_df_columns_with_quotes = list(map(lambda x: f'"{x}"', iud_df_columns))
-            sort_key_with_quotes = ",".join(list(map(lambda x: f'"{x}"', primary_key.split(","))))
+            # sort_key_with_quotes = ",".join(list(map(lambda x: f'"{x}"', primary_key.split(","))))
             # if redshift target table already exists, do not create table
+
+            # staging_sql = "select {columns} from {stage_table} where operation_aws!='{operation_del_value}'".format(columns=",".join(iud_df_columns_with_quotes),stage_table=stage_table_name,operation_del_value=operation_del_value)
+            staging_sql = "select {columns} from (select {columns} , ROW_NUMBER() OVER( PARTITION BY {sort_key_with_quotes} ORDER BY {sort_key_with_quotes}) AS seq_number from {stage_table} where operation_aws!='{operation_del_value}') where seq_number=1".format(columns=",".join(iud_df_columns_with_quotes),stage_table=stage_table_name,operation_del_value=operation_del_value,sort_key_with_quotes=sort_key_with_quotes)
+
             create_target_table_sql = "create table  {target_table} sortkey ({sortkey}) as select {columns} from {stage_table} where 1=3;".format(
                 stage_table=stage_table_name, target_table=redshift_target_table, columns=",".join(iud_df_columns_with_quotes),
                 sortkey=sort_key_with_quotes)
-            transaction_sql = "begin;{scheam_change_sql} delete from {target_table} using {stage_table} where {on_sql}; insert into {target_table}({columns}) select {columns} from {stage_table} where operation_aws!='{operation_del_value}'; truncate table {stage_table}; end;".format(
+            transaction_sql = "begin;{scheam_change_sql} delete from {target_table} using {stage_table} where {on_sql}; insert into {target_table}({columns}) {staging_sql}; truncate table {stage_table}; end;".format(
                 stage_table=stage_table_name, target_table=redshift_target_table, on_sql=on_sql,
-                columns=",".join(iud_df_columns_with_quotes), scheam_change_sql=css, operation_del_value=operation_del_value)
+                columns=",".join(iud_df_columns_with_quotes), scheam_change_sql=css, operation_del_value=operation_del_value,staging_sql=staging_sql)
             if self._check_table_exists(redshift_target_table_without_schema, redshift_schema):
                 post_query = transaction_sql
             else:
