@@ -12,7 +12,7 @@ from typing import Optional
 import base64
 import re
 import hashlib
-
+import time
 
 
 
@@ -473,6 +473,9 @@ class CDCRedshiftSink:
 
         self.logger("spark redshift jdbc transaction sql after copy stage table : " + post_query)
         try:
+            # iud_df.count()
+            # t = time.time()
+            #iud_df.write.format("csv").mode("overwrite").save(self.redshift_tmpdir+"/"+table_name_md5+"/"+str(int(t))+"/")
             iud_df.write \
                 .format("io.github.spark_redshift_community.spark.redshift") \
                 .option("url", "jdbc:redshift://{0}:{1}/{2}".format(self.host, self.port, self.database)) \
