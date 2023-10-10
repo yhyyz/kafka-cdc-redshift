@@ -4,7 +4,7 @@ from pyspark.sql.types import StructType, StructField, StringType, IntegerType
 from pyspark.sql.functions import from_json
 from pyspark.sql.functions import udf
 from pyspark.sql.types import *
-from pyspark.sql.functions import col,to_timestamp,to_date,date_add,expr,transform,explode
+from pyspark.sql.functions import col, to_timestamp, to_date, date_add, expr, transform, explode
 import redshift_connector
 from cdc_util.redshift_schema_evolution import SchemaEvolution
 import json
@@ -13,7 +13,6 @@ import base64
 import re
 import hashlib
 import time
-
 
 
 def gen_filter_udf(db, table, cdc_format):
@@ -64,6 +63,7 @@ def change_cdc_format_udf(cdc_format):
                                           match_data: f'"before":{match_data.group(1)},"after":{match_data.group(1)}',
                                       str_json)
         return res_str_json
+
     return udf(change_cdc_format, StringType())
 
 
@@ -72,7 +72,8 @@ class CDCRedshiftSink:
                  disable_dataframe_show="false", host: Optional[str] = None, port: Optional[int] = None,
                  database: Optional[str] = None, user: Optional[str] = None,
                  password: Optional[str] = None, redshift_secret_id: Optional[str] = None,
-                 region_name: Optional[str] = None, s3_endpoint: Optional[str] = None, tempformat: Optional[str] = None,maxerror: Optional[int] = None):
+                 region_name: Optional[str] = None, s3_endpoint: Optional[str] = None, tempformat: Optional[str] = None,
+                 maxerror: Optional[int] = None):
         if logger:
             self.logger = logger
         else:
@@ -100,7 +101,6 @@ class CDCRedshiftSink:
 
         self.redshift_secret_id = redshift_secret_id
         self.region_name = region_name
-
 
         if redshift_secret_id:
             secret_dict = json.loads(self._get_secret())
@@ -135,6 +135,7 @@ class CDCRedshiftSink:
             return schema_str + "\n" + data_str
         else:
             return "(disable show dataframe)"
+
     def _getDFSchemaJsonString(self, df):
         if self.disable_dataframe_show == "false":
             schema_str = df.schema.json()
@@ -148,7 +149,8 @@ class CDCRedshiftSink:
             cursor.execute(sql_str)
             res = cursor.fetchall()
             return res
-    def _run_sql(self, sql_str,schema):
+
+    def _run_sql(self, sql_str, schema):
 
         with self.con.cursor() as cursor:
             cursor.execute("set search_path to '$user', public, {0}".format(schema))
@@ -156,6 +158,7 @@ class CDCRedshiftSink:
                 if sql != '':
                     cursor.execute(sql.strip())
             self.con.commit()
+
     def _check_table_exists(self, table, schema):
         sql = "select distinct tablename from pg_table_def where tablename = '{0}' and schemaname='{1}'".format(table,
                                                                                                                 schema)
@@ -186,7 +189,6 @@ class CDCRedshiftSink:
             else:
                 df = df.withColumn(column, expr('to_timestamp({0}, "{1}")'.format(column, date_format)))
         return df
-
 
     #	{"before":null,"after":{"pid":6,"pname":"pp6-name","pprice":"12.14","create_time":"2023-03-12T16:15:06Z","modify_time":"2023-03-12T16:15:06Z"},"source":{"version":"1.6.4.Final","connector":"mysql","name":"mysql_binlog_source","ts_ms":0,"snapshot":"false","db":"test_db","sequence":null,"table":"product_03","server_id":0,"gtid":null,"file":"","pos":0,"row":0,"thread":null,"query":null,"kafka_partition_key":"test_db.product_03.no_pk"},"op":"r","ts_ms":1678759544359,"transaction":null}
     def _get_cdc_sql_from_view(self, view_name, primary_key):
@@ -224,24 +226,29 @@ class CDCRedshiftSink:
             d_op_sql = "select * from (select data.*, type as operation_aws, row_number() over (partition by {primary_key} order by ts desc,data.data_index_aws desc) as seqnum_aws  from {view_name} where (type='DELETE') ) t1 where seqnum_aws=1".format(
                 primary_key=partition_key, view_name="global_temp." + view_name)
         return d_op_sql
+
     def _get_on_sql(self, stage_table, target_table, primary_key):
         on_sql = []
         for pk in primary_key.split(","):
             tmp = '{stage_table}."{join_key}" = {target_table}."{join_key}"'.format(stage_table=stage_table,
-                                                                                target_table=target_table, join_key=pk)
+                                                                                    target_table=target_table,
+                                                                                    join_key=pk)
             on_sql.append(tmp)
         return " and ".join(on_sql)
+
     def close_conn(self):
         if self.con:
             self.con.close()
-    def _do_write_delete(self, scf, redshift_schema, table_name, primary_key, target_table, ignore_ddl,super_columns, timestamp_columns, date_columns):
+
+    def _do_write_delete(self, scf, redshift_schema, table_name, primary_key, target_table, ignore_ddl, super_columns,
+                         timestamp_columns, date_columns):
         if target_table:
-            target_table = target_table+"_delete"
+            target_table = target_table + "_delete"
             stage_table_name = redshift_schema + "." + "stage_table_" + target_table
             redshift_target_table = redshift_schema + "." + target_table
             redshift_target_table_without_schema = target_table
         else:
-            table_name = table_name+"_delete"
+            table_name = table_name + "_delete"
             stage_table_name = redshift_schema + "." + "stage_table_" + table_name
             redshift_target_table = redshift_schema + "." + table_name
             redshift_target_table_without_schema = table_name
@@ -261,18 +268,18 @@ class CDCRedshiftSink:
         d_op = self._get_cdc_sql_delete_from_view(view_name, primary_key=primary_key)
         self.logger("d operation(delete) sql:" + d_op)
 
-
         d_df = self.spark.sql(d_op).drop(*cols_to_drop)
         if super_columns:
             # add super schema metadata
             super_column_list = super_columns.split(",")
-            if len(super_columns)>0:
+            if len(super_columns) > 0:
                 d_df = d_df.na.fill("").replace(to_replace='', value="{}", subset=super_column_list)
             fields = []
             for field in d_df.schema.fields:
                 if field.name in super_column_list:
                     # metadata={'redshift_type','super'}
-                    sf = StructField(field.name, field.dataType, field.nullable, metadata={"super": True,"redshift_type": "super"})
+                    sf = StructField(field.name, field.dataType, field.nullable,
+                                     metadata={"super": True, "redshift_type": "super"})
                     # sf = StructField(field.name, field.dataType, field.nullable, metadata={"redshift_type": "super"})
                 else:
                     sf = StructField(field.name, field.dataType, field.nullable)
@@ -295,14 +302,16 @@ class CDCRedshiftSink:
         d_df_columns = d_df.columns
         d_df_columns.remove("operation_aws")
         on_sql = self._get_on_sql(stage_table_name, redshift_target_table, primary_key)
-        se = SchemaEvolution(d_df_columns, d_df.schema, redshift_schema, redshift_target_table_without_schema, self.logger, host=self.host,
+        se = SchemaEvolution(d_df_columns, d_df.schema, redshift_schema, redshift_target_table_without_schema,
+                             self.logger, host=self.host,
                              port=self.port, database=self.database, user=self.user, password=self.password)
         if ignore_ddl and ignore_ddl == "true":
 
             df_field_name_list = []
             for field in d_df.schema.fields:
                 df_field_name_list.append(field.name)
-            insert_sql_columns, select_sql_columns_with_cast_type = se.get_columns_with_cast_type_from_redshift(df_field_name_list)
+            insert_sql_columns, select_sql_columns_with_cast_type = se.get_columns_with_cast_type_from_redshift(
+                df_field_name_list)
             transaction_sql = "begin; delete from {target_table} using {stage_table} where {on_sql}; insert into {target_table}({insert_columns}) select {select_columns} from {stage_table}; truncate table {stage_table}; end;".format(
                 stage_table=stage_table_name, target_table=redshift_target_table, on_sql=on_sql,
                 insert_columns=",".join(insert_sql_columns), select_columns=",".join(select_sql_columns_with_cast_type))
@@ -318,7 +327,8 @@ class CDCRedshiftSink:
             sort_key_with_quotes = ",".join(list(map(lambda x: f'"{x}"', primary_key.split(","))))
 
             create_target_table_sql = "create table  {target_table} sortkey ({sortkey}) as select {columns} from {stage_table} where 1=3;".format(
-                stage_table=stage_table_name, target_table=redshift_target_table, columns=",".join(d_df_columns_with_quotes),
+                stage_table=stage_table_name, target_table=redshift_target_table,
+                columns=",".join(d_df_columns_with_quotes),
                 sortkey=sort_key_with_quotes)
             transaction_sql = "begin;{scheam_change_sql} delete from {target_table} using {stage_table} where {on_sql}; insert into {target_table}({columns}) select {columns} from {stage_table}; truncate table {stage_table}; end;".format(
                 stage_table=stage_table_name, target_table=redshift_target_table, on_sql=on_sql,
@@ -340,7 +350,9 @@ class CDCRedshiftSink:
                 .option("postactions", post_query) \
                 .option("tempformat", self.tempformat) \
                 .option("s3_endpoint", self.s3_endpoint) \
-                .option("extracopyoptions", "TRUNCATECOLUMNS region '{0}' maxerror {1} dateformat 'auto' timeformat 'auto'".format(self.region_name, self.maxerror)) \
+                .option("extracopyoptions",
+                        "TRUNCATECOLUMNS region '{0}' maxerror {1} dateformat 'auto' timeformat 'auto'".format(
+                            self.region_name, self.maxerror)) \
                 .option("aws_iam_role", self.redshift_iam_role).mode("append").save()
         except Exception as e:
             self.logger("first write {0} error, drop staging table and create".format(stage_table_name))
@@ -362,7 +374,9 @@ class CDCRedshiftSink:
                         "TRUNCATECOLUMNS region '{0}' maxerror {1} dateformat 'auto' timeformat 'auto'".format(
                             self.region_name, self.maxerror)) \
                 .option("aws_iam_role", self.redshift_iam_role).mode("append").save()
-    def _do_write(self, scf, redshift_schema, table_name, primary_key, target_table, ignore_ddl,super_columns,timestamp_columns, date_columns):
+
+    def _do_write(self, scf, redshift_schema, table_name, primary_key, target_table, ignore_ddl, super_columns,
+                  timestamp_columns, date_columns, skip_delete):
         if target_table:
             stage_table_name = redshift_schema + "." + "stage_table_" + target_table
             redshift_target_table = redshift_schema + "." + target_table
@@ -382,7 +396,7 @@ class CDCRedshiftSink:
         if self.cdc_format == "CANAL-CDC":
             scf = scf.withColumn("data", transform("data", lambda x, i: x.withField("data_index_aws", i)))
             scf = scf.withColumn("data", explode("data"))
-            cols_to_drop = ['seqnum_aws',"data_index_aws"]
+            cols_to_drop = ['seqnum_aws', "data_index_aws"]
         scf.createOrReplaceGlobalTempView(view_name)
 
         iud_op = self._get_cdc_sql_from_view(view_name, primary_key=primary_key)
@@ -393,13 +407,14 @@ class CDCRedshiftSink:
         # add super schema metadata
         if super_columns:
             super_column_list = super_columns.split(",")
-            if len(super_columns)>0:
+            if len(super_columns) > 0:
                 iud_df = iud_df.na.fill("").replace(to_replace='', value="{}", subset=super_column_list)
             fields = []
             for field in iud_df.schema.fields:
                 if field.name in super_column_list:
                     # metadata={'redshift_type','super'}
-                    sf = StructField(field.name, field.dataType, field.nullable, metadata={"super": True, "redshift_type": "super"})
+                    sf = StructField(field.name, field.dataType, field.nullable,
+                                     metadata={"super": True, "redshift_type": "super"})
                 else:
                     sf = StructField(field.name, field.dataType, field.nullable)
                 fields.append(sf)
@@ -409,11 +424,11 @@ class CDCRedshiftSink:
                 "stage table dataframe schema with super metadata {0}".format(self._getDFSchemaJsonString(iud_df)))
 
         if timestamp_columns:
-            iud_df = self._convert_date_or_timestamp(iud_df,time_columns=timestamp_columns,convert_format="timestamp")
+            iud_df = self._convert_date_or_timestamp(iud_df, time_columns=timestamp_columns, convert_format="timestamp")
             self.logger(
                 "stage table dataframe with timestamp convert {0}".format(self._getDFSchemaJsonString(iud_df)))
         if date_columns:
-            iud_df = self._convert_date_or_timestamp(iud_df,time_columns=date_columns, convert_format="date")
+            iud_df = self._convert_date_or_timestamp(iud_df, time_columns=date_columns, convert_format="date")
             self.logger(
                 "stage table dataframe with date convert {0}".format(self._getDFSchemaJsonString(iud_df)))
 
@@ -429,9 +444,14 @@ class CDCRedshiftSink:
             operation_del_value = "DELETE"
         elif self.cdc_format == "FLINK-CDC" or self.cdc_format == "MSK-DEBEZIUM-CDC":
             operation_del_value = "d"
+
+        if skip_delete and skip_delete == "ture":
+            operation_del_value = "skip_delete"
+
         on_sql = self._get_on_sql(stage_table_name, redshift_target_table, primary_key)
 
-        se = SchemaEvolution(iud_df_columns, iud_df.schema, redshift_schema, redshift_target_table_without_schema, self.logger, host=self.host,
+        se = SchemaEvolution(iud_df_columns, iud_df.schema, redshift_schema, redshift_target_table_without_schema,
+                             self.logger, host=self.host,
                              port=self.port, database=self.database, user=self.user, password=self.password)
         sort_key_with_quotes = ",".join(list(map(lambda x: f'"{x}"', primary_key.split(","))))
         if ignore_ddl and ignore_ddl == "true":
@@ -439,17 +459,22 @@ class CDCRedshiftSink:
             # for field in iud_df.schema.fields:
             #     df_field_name_list.append(field.name)
             #
-            insert_sql_columns,select_sql_columns_with_cast_type = se.get_columns_with_cast_type_from_redshift(iud_df_columns)
+            insert_sql_columns, select_sql_columns_with_cast_type = se.get_columns_with_cast_type_from_redshift(
+                iud_df_columns)
 
             # staging_sql = "select {select_columns} from {stage_table} where operation_aws!='{operation_del_value}'".format(select_columns=",".join(select_sql_columns_with_cast_type),stage_table=stage_table_name,operation_del_value=operation_del_value)
-            staging_sql = "select {select_columns} from (select {select_columns} , ROW_NUMBER() OVER( PARTITION BY {sort_key_with_quotes} ORDER BY {sort_key_with_quotes}) AS seq_number from {stage_table} where operation_aws!='{operation_del_value}') where seq_number=1".format(select_columns=",".join(select_sql_columns_with_cast_type),stage_table=stage_table_name,operation_del_value=operation_del_value,sort_key_with_quotes=sort_key_with_quotes)
+            staging_sql = "select {select_columns} from (select {select_columns} , ROW_NUMBER() OVER( PARTITION BY {sort_key_with_quotes} ORDER BY {sort_key_with_quotes}) AS seq_number from {stage_table} where operation_aws!='{operation_del_value}') where seq_number=1".format(
+                select_columns=",".join(select_sql_columns_with_cast_type), stage_table=stage_table_name,
+                operation_del_value=operation_del_value, sort_key_with_quotes=sort_key_with_quotes)
             transaction_sql = "begin; delete from {target_table} using {stage_table} where {on_sql}; insert into {target_table}({insert_columns}) {staging_sql}; truncate table {stage_table}; end;".format(
                 stage_table=stage_table_name, target_table=redshift_target_table, on_sql=on_sql,
-                insert_columns=",".join(insert_sql_columns), select_columns=",".join(select_sql_columns_with_cast_type), operation_del_value=operation_del_value,staging_sql=staging_sql)
+                insert_columns=",".join(insert_sql_columns), select_columns=",".join(select_sql_columns_with_cast_type),
+                operation_del_value=operation_del_value, staging_sql=staging_sql)
             if self._check_table_exists(redshift_target_table_without_schema, redshift_schema):
                 post_query = transaction_sql
             else:
-                raise Exception("you set ignore_ddl=true but the redshift table not exists: " + str(redshift_target_table))
+                raise Exception(
+                    "you set ignore_ddl=true but the redshift table not exists: " + str(redshift_target_table))
         else:
             css = se.get_change_schema_sql()
             se.close_conn()
@@ -458,14 +483,18 @@ class CDCRedshiftSink:
             # if redshift target table already exists, do not create table
 
             # staging_sql = "select {columns} from {stage_table} where operation_aws!='{operation_del_value}'".format(columns=",".join(iud_df_columns_with_quotes),stage_table=stage_table_name,operation_del_value=operation_del_value)
-            staging_sql = "select {columns} from (select {columns} , ROW_NUMBER() OVER( PARTITION BY {sort_key_with_quotes} ORDER BY {sort_key_with_quotes}) AS seq_number from {stage_table} where operation_aws!='{operation_del_value}') where seq_number=1".format(columns=",".join(iud_df_columns_with_quotes),stage_table=stage_table_name,operation_del_value=operation_del_value,sort_key_with_quotes=sort_key_with_quotes)
+            staging_sql = "select {columns} from (select {columns} , ROW_NUMBER() OVER( PARTITION BY {sort_key_with_quotes} ORDER BY {sort_key_with_quotes}) AS seq_number from {stage_table} where operation_aws!='{operation_del_value}') where seq_number=1".format(
+                columns=",".join(iud_df_columns_with_quotes), stage_table=stage_table_name,
+                operation_del_value=operation_del_value, sort_key_with_quotes=sort_key_with_quotes)
 
             create_target_table_sql = "create table  {target_table} sortkey ({sortkey}) as select {columns} from {stage_table} where 1=3;".format(
-                stage_table=stage_table_name, target_table=redshift_target_table, columns=",".join(iud_df_columns_with_quotes),
+                stage_table=stage_table_name, target_table=redshift_target_table,
+                columns=",".join(iud_df_columns_with_quotes),
                 sortkey=sort_key_with_quotes)
             transaction_sql = "begin;{scheam_change_sql} delete from {target_table} using {stage_table} where {on_sql}; insert into {target_table}({columns}) {staging_sql}; truncate table {stage_table}; end;".format(
                 stage_table=stage_table_name, target_table=redshift_target_table, on_sql=on_sql,
-                columns=",".join(iud_df_columns_with_quotes), scheam_change_sql=css, operation_del_value=operation_del_value,staging_sql=staging_sql)
+                columns=",".join(iud_df_columns_with_quotes), scheam_change_sql=css,
+                operation_del_value=operation_del_value, staging_sql=staging_sql)
             if self._check_table_exists(redshift_target_table_without_schema, redshift_schema):
                 post_query = transaction_sql
             else:
@@ -475,7 +504,7 @@ class CDCRedshiftSink:
         try:
             # iud_df.count()
             # t = time.time()
-            #iud_df.write.format("csv").mode("overwrite").save(self.redshift_tmpdir+"/"+table_name_md5+"/"+str(int(t))+"/")
+            # iud_df.write.format("csv").mode("overwrite").save(self.redshift_tmpdir+"/"+table_name_md5+"/"+str(int(t))+"/")
             iud_df.write \
                 .format("io.github.spark_redshift_community.spark.redshift") \
                 .option("url", "jdbc:redshift://{0}:{1}/{2}".format(self.host, self.port, self.database)) \
@@ -486,13 +515,15 @@ class CDCRedshiftSink:
                 .option("postactions", post_query) \
                 .option("tempformat", self.tempformat) \
                 .option("s3_endpoint", self.s3_endpoint) \
-                .option("extracopyoptions", "TRUNCATECOLUMNS region '{0}' maxerror {1} dateformat 'auto' timeformat 'auto'".format(self.region_name, self.maxerror)) \
+                .option("extracopyoptions",
+                        "TRUNCATECOLUMNS region '{0}' maxerror {1} dateformat 'auto' timeformat 'auto'".format(
+                            self.region_name, self.maxerror)) \
                 .option("aws_iam_role", self.redshift_iam_role).mode("append").save()
         except Exception as e:
             self.logger("first write {0} error, drop staging table and create".format(stage_table_name))
             self.logger(e)
             drop_stage_table_sql = "drop table if exists {stage_table}".format(stage_table=stage_table_name)
-            #print("retry_write and drop stage: "+drop_stage_table_sql)
+            # print("retry_write and drop stage: "+drop_stage_table_sql)
             self._run_sql(drop_stage_table_sql, redshift_schema)
             iud_df.write \
                 .format("io.github.spark_redshift_community.spark.redshift") \
@@ -508,7 +539,6 @@ class CDCRedshiftSink:
                         "TRUNCATECOLUMNS region '{0}' maxerror {1} dateformat 'auto' timeformat 'auto'".format(
                             self.region_name, self.maxerror)) \
                 .option("aws_iam_role", self.redshift_iam_role).mode("append").save()
-
 
     def run_task(self, item, data_frame):
         task_status = {}
@@ -538,6 +568,8 @@ class CDCRedshiftSink:
                 timestamp_columns = item["timestamp_columns"]
             if "date_columns" in item:
                 date_columns = item["date_columns"]
+            if "skip_delete" in item:
+                skip_delete = item["skip_delete"]
 
             # target_table = redshift_schema + "." + table_name
 
@@ -557,11 +589,14 @@ class CDCRedshiftSink:
                                                                                                 self._getDFExampleString(
                                                                                                     scf)))
                 if only_save_delete == "true":
-                    self._do_write_delete(scf, self.redshift_schema, table_name, primary_key, target_table, ignore_ddl,super_columns,timestamp_columns,date_columns)
+                    self._do_write_delete(scf, self.redshift_schema, table_name, primary_key, target_table, ignore_ddl,
+                                          super_columns, timestamp_columns, date_columns)
                 else:
-                    self._do_write(scf, self.redshift_schema, table_name, primary_key, target_table,ignore_ddl, super_columns,timestamp_columns,date_columns)
+                    self._do_write(scf, self.redshift_schema, table_name, primary_key, target_table, ignore_ddl,
+                                   super_columns, timestamp_columns, date_columns, skip_delete)
                     if save_delete == "true":
-                        self._do_write_delete(scf, self.redshift_schema, table_name, primary_key, target_table, ignore_ddl,super_columns,timestamp_columns,date_columns)
+                        self._do_write_delete(scf, self.redshift_schema, table_name, primary_key, target_table,
+                                              ignore_ddl, super_columns, timestamp_columns, date_columns)
                 self.logger("sync the table complete: " + table_name)
                 task_status["status"] = "finished"
                 self.close_conn()
