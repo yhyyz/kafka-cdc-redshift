@@ -4,7 +4,7 @@ from pyspark.sql.types import StructType, StructField, StringType, IntegerType
 from pyspark.sql.functions import from_json
 from pyspark.sql.functions import udf
 from pyspark.sql.types import *
-from pyspark.sql.functions import col, to_timestamp, to_date, date_add, expr, transform, explode
+from pyspark.sql.functions import col, to_timestamp, to_date, date_add, expr, transform, explode,posexplode
 import redshift_connector
 from cdc_util.redshift_schema_evolution import SchemaEvolution
 import json
@@ -206,7 +206,7 @@ class CDCRedshiftSink:
                 primary_key=partition_key, view_name="global_temp." + view_name)
         elif self.cdc_format == "CANAL-CDC":
             partition_key = ",".join(["data." + pk for pk in primary_key.split(",")])
-            iud_op_sql = "select * from (select data.*, type as operation_aws, row_number() over (partition by {primary_key} order by ts desc ,data.data_index_aws desc) as seqnum_aws  from {view_name} where (type='INSERT' or type='UPDATE' or type='DELETE') ) t1 where seqnum_aws=1".format(
+            iud_op_sql = "select * from (select data.*, type as operation_aws, row_number() over (partition by `database`,`table`,{primary_key} order by `database`,`table`, ts desc ,data_index_aws desc) as seqnum_aws  from {view_name} where (type='INSERT' or type='UPDATE' or type='DELETE') ) t1 where seqnum_aws=1".format(
                 primary_key=partition_key, view_name="global_temp." + view_name)
 
         return iud_op_sql
@@ -223,7 +223,7 @@ class CDCRedshiftSink:
                 primary_key=partition_key, view_name="global_temp." + view_name)
         elif self.cdc_format == "CANAL-CDC":
             partition_key = ",".join(["data." + pk for pk in primary_key.split(",")])
-            d_op_sql = "select * from (select data.*, type as operation_aws, row_number() over (partition by {primary_key} order by ts desc,data.data_index_aws desc) as seqnum_aws  from {view_name} where (type='DELETE') ) t1 where seqnum_aws=1".format(
+            d_op_sql = "select * from (select data.*, type as operation_aws, row_number() over (partition by  `database`,`table`,{primary_key} order by  `database`,`table`,ts desc,data_index_aws desc) as seqnum_aws  from {view_name} where (type='DELETE') ) t1 where seqnum_aws=1".format(
                 primary_key=partition_key, view_name="global_temp." + view_name)
         return d_op_sql
 
@@ -253,21 +253,23 @@ class CDCRedshiftSink:
             redshift_target_table = redshift_schema + "." + table_name
             redshift_target_table_without_schema = table_name
         cols_to_drop = ['seqnum_aws']
-        if self.cdc_format == "CANAL-CDC":
-            scf = scf.withColumn("data", transform("data", lambda x, i: x.withField("data_index_aws", i)))
-            scf = scf.withColumn("data", explode("data"))
-            cols_to_drop = ['seqnum_aws', "data_index_aws"]
-
         md5 = hashlib.md5()
         md5.update(table_name.encode('utf-8'))
         # 正则匹配时，名字会有特殊字符
         table_name_md5 = md5.hexdigest()
         view_name = "kafka_source_" + table_name_md5
-        scf.createOrReplaceGlobalTempView(view_name)
+        if self.cdc_format == "CANAL-CDC":
+            scf_array = scf.withColumnRenamed("data", "data_array")
+            scf_explode = scf_array.select("*", posexplode("data_array").alias("data_index_aws", "data"))
+            # scf = scf.withColumn("data", transform("data", lambda x, i: x.withField("data_index_aws", i)))
+            # scf = scf.withColumn("data", explode("data"))
+            cols_to_drop = ['seqnum_aws', "data_index_aws"]
+            scf_explode.createOrReplaceGlobalTempView(view_name)
+        else:
+            scf.createOrReplaceGlobalTempView(view_name)
 
         d_op = self._get_cdc_sql_delete_from_view(view_name, primary_key=primary_key)
         self.logger("d operation(delete) sql:" + d_op)
-
         d_df = self.spark.sql(d_op).drop(*cols_to_drop)
         if super_columns:
             # add super schema metadata
@@ -394,15 +396,18 @@ class CDCRedshiftSink:
 
         cols_to_drop = ['seqnum_aws']
         if self.cdc_format == "CANAL-CDC":
-            scf = scf.withColumn("data", transform("data", lambda x, i: x.withField("data_index_aws", i)))
-            scf = scf.withColumn("data", explode("data"))
+            scf_array = scf.withColumnRenamed("data", "data_array")
+            scf_explode = scf_array.select("*", posexplode("data_array").alias("data_index_aws", "data"))
+            # scf = scf.withColumn("data", transform("data", lambda x, i: x.withField("data_index_aws", i)))
+            # scf = scf.withColumn("data", explode("data"))
             cols_to_drop = ['seqnum_aws', "data_index_aws"]
-        scf.createOrReplaceGlobalTempView(view_name)
+            scf_explode.createOrReplaceGlobalTempView(view_name)
+        else:
+            scf.createOrReplaceGlobalTempView(view_name)
 
+        # scf_explode.createOrReplaceGlobalTempView(view_name)
         iud_op = self._get_cdc_sql_from_view(view_name, primary_key=primary_key)
-
         self.logger("iud operation(load,update,insert,delete) sql:" + iud_op)
-
         iud_df = self.spark.sql(iud_op).drop(*cols_to_drop)
         # add super schema metadata
         if super_columns:
@@ -503,8 +508,6 @@ class CDCRedshiftSink:
         self.logger("spark redshift jdbc transaction sql after copy stage table : " + post_query)
         try:
             # iud_df.count()
-            # t = time.time()
-            # iud_df.write.format("csv").mode("overwrite").save(self.redshift_tmpdir+"/"+table_name_md5+"/"+str(int(t))+"/")
             iud_df.write \
                 .format("io.github.spark_redshift_community.spark.redshift") \
                 .option("url", "jdbc:redshift://{0}:{1}/{2}".format(self.host, self.port, self.database)) \
@@ -554,6 +557,7 @@ class CDCRedshiftSink:
             super_columns = ""
             timestamp_columns = ""
             date_columns = ""
+            skip_delete = ""
             if "target_table" in item:
                 target_table = item["target_table"]
             if "ignore_ddl" in item:
@@ -577,6 +581,7 @@ class CDCRedshiftSink:
 
             df = data_frame.filter(gen_filter_udf(db_name, table_name, self.cdc_format)(col('value')))
             fdf = df.select(change_cdc_format_udf(self.cdc_format)(col('value')).alias("value"))
+
             # self.logger("the table {0}: record number: {1}".format(table_name, str(fdf.count())))
             if not fdf.rdd.isEmpty():
                 self.logger("the table {0}:  kafka source data: {1}".format(table_name, self._getDFExampleString(fdf)))
