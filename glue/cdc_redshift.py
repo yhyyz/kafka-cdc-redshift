@@ -95,6 +95,7 @@ reader = spark \
     .option("kafka.bootstrap.servers", kafka_broker) \
     .option("subscribe", topic) \
     .option("maxOffsetsPerTrigger", max_offsets_per_trigger) \
+    .option("startingOffsetsByTimestampStrategy", "latest") \
     .option("kafka.consumer.commit.groupid", consumer_group)
 if startingOffsets == "earliest" or startingOffsets == "latest":
     reader.option("startingOffsets", startingOffsets)

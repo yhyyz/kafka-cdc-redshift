@@ -1,3 +1,7 @@
+## 文档
+1. [CDC多库多表实时入仓方案](CDC多库多表实时入仓方案.md)
+2. [EMR-SERVERLESS-CDC-REDSHIFT部署](EMR-SERVERLESS-CDC-REDSHIFT.md)
+3. [EMR-EC2-CDC-REDSHIFT部署](EMR-EC2-CDC-REDSHIFT.md)
 ## MSK(kafka) cdc redshift
 Spark Streaming从Kafka中消费Flink CDC数据，多库多表实时同步到Redshift.当前支持
 * Glue Streaming Job
@@ -24,6 +28,7 @@ MySQL Flink CDC到Kafka有三种方式：
 ```
 
 #### update history
+* 20240126 对于emr on ec2部署加入batch timeout参数，限定一个batch如果在指定时间未执行完成，抛出异常，加入
 * 20231010 支持保留cdc的delete数据,即源端表delete数据，redshift表保留删除记录,只需要在需要的表上配置skip_delete=true即可
   ```markdown
   sync_table_list = [\
