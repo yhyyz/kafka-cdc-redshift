@@ -1,1 +1,1 @@
-[CDC多库多表实时入仓方案.md](CDC%E5%A4%9A%E5%BA%93%E5%A4%9A%E8%A1%A8%E5%AE%9E%E6%97%B6%E5%85%A5%E4%BB%93%E6%96%B9%E6%A1%88.md)](https://aws.amazon.com/cn/blogs/china/real-time-writing-of-cdc-data-into-redshift-data-warehouse-solution-in-multi-database-and-multi-table-scenarios/)
+[CDC多库多表实时入仓方案](CDC%E5%A4%9A%E5%BA%93%E5%A4%9A%E8%A1%A8%E5%AE%9E%E6%97%B6%E5%85%A5%E4%BB%93%E6%96%B9%E6%A1%88.md)](https://aws.amazon.com/cn/blogs/china/real-time-writing-of-cdc-data-into-redshift-data-warehouse-solution-in-multi-database-and-multi-table-scenarios/)
