@@ -66,7 +66,6 @@ def change_cdc_format_udf(cdc_format):
 
     return udf(change_cdc_format, StringType())
 
-
 class CDCRedshiftSink:
     def __init__(self, spark, cdc_format, redshift_schema, redshift_iam_role, redshift_tmpdir, logger=None,
                  disable_dataframe_show="false", host: Optional[str] = None, port: Optional[int] = None,
@@ -351,6 +350,7 @@ class CDCRedshiftSink:
                 .option("tempdir", self.redshift_tmpdir) \
                 .option("postactions", post_query) \
                 .option("tempformat", self.tempformat) \
+                .option("tempdir_region", self.region_name) \
                 .option("s3_endpoint", self.s3_endpoint) \
                 .option("extracopyoptions",
                         "TRUNCATECOLUMNS region '{0}' maxerror {1} dateformat 'auto' timeformat 'auto'".format(
@@ -371,6 +371,7 @@ class CDCRedshiftSink:
                 .option("tempdir", self.redshift_tmpdir) \
                 .option("postactions", post_query) \
                 .option("tempformat", self.tempformat) \
+                .option("tempdir_region",self.region_name) \
                 .option("s3_endpoint", self.s3_endpoint) \
                 .option("extracopyoptions",
                         "TRUNCATECOLUMNS region '{0}' maxerror {1} dateformat 'auto' timeformat 'auto'".format(
@@ -581,8 +582,6 @@ class CDCRedshiftSink:
 
             df = data_frame.filter(gen_filter_udf(db_name, table_name, self.cdc_format)(col('value')))
             fdf = df.select(change_cdc_format_udf(self.cdc_format)(col('value')).alias("value"))
-
-            # self.logger("the table {0}: record number: {1}".format(table_name, str(fdf.count())))
             if not fdf.rdd.isEmpty():
                 self.logger("the table {0}:  kafka source data: {1}".format(table_name, self._getDFExampleString(fdf)))
                 # auto gen schema

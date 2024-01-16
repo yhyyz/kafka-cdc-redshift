@@ -8,6 +8,7 @@ import boto3
 from jproperties import Properties
 from urllib.parse import urlparse
 from io import StringIO
+import concurrent
 
 """
 if need to restart job and consume data from kafka earliest, please rm checkpoint dir 
@@ -69,6 +70,12 @@ tempformat_p = params.get("tempformat")
 if tempformat_p:
     tempformat = tempformat_p.data
 maxerror = int(params["maxerror"].data)
+# 360min 如果一个batch在360min没有执行完成，就抛出异常，这个一个非常大的值，正常一个batch应该在5min钟内执行完成
+batch_timeout = 360 * 60
+batch_timeout_p = params.get("batch_timeout")
+if batch_timeout_p:
+    batch_timeout = int(batch_timeout_p.data)
+
 sync_table_list = json.loads(params["sync_table_list"].data)
 redshift_secret_id = params["redshift_secret_id"].data
 redshift_host = params["redshift_host"].data
@@ -87,6 +94,7 @@ reader = spark \
     .option("kafka.bootstrap.servers", kafka_broker) \
     .option("subscribe", topic) \
     .option("maxOffsetsPerTrigger", max_offsets_per_trigger) \
+    .option("startingOffsetsByTimestampStrategy", "latest") \
     .option("kafka.consumer.commit.groupid", consumer_group)
 if startingOffsets == "earliest" or startingOffsets == "latest":
     reader.option("startingOffsets", startingOffsets)
@@ -119,16 +127,21 @@ def process_batch(data_frame, batchId):
                 future = pool.submit(rs.run_task, item, dfc)
                 futures.append(future)
             task_list = []
-            for future in as_completed(futures):
-                res = future.result()
-                if res:
-                    task_list.append(res)
-                    if res["status"] == "error":
-                        logger_msg("task error, stop application" + str(task_list))
-                        spark.stop()
-                        raise Exception("task error, stop application" + str(task_list))
-            logger.info(job_name + " - my_log -task complete " + str(task_list))
-            pool.shutdown(wait=True)
+            try:
+                for future in as_completed(futures,timeout=batch_timeout):
+                    res = future.result()
+                    if res:
+                        task_list.append(res)
+                        if res["status"] == "error":
+                            logger_msg("task error, stop application" + str(task_list))
+                            spark.stop()
+                            raise Exception("task error, stop application" + str(task_list))
+                logger.info(job_name + " - my_log -task complete " + str(task_list))
+                pool.shutdown(wait=True)
+            except concurrent.futures._base.TimeoutError as e:
+                spark.stop()
+                raise Exception("task error, stop application" + str(task_list))
+
         dfc.unpersist()
         logger.info(job_name + " - my_log - finish batch id: " + str(batchId))
 
