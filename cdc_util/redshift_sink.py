@@ -240,15 +240,15 @@ class CDCRedshiftSink:
             self.con.close()
 
     def _do_write_delete(self, scf, redshift_schema, table_name, primary_key, target_table, ignore_ddl, super_columns,
-                         timestamp_columns, date_columns):
+                         timestamp_columns, date_columns,db_name):
         if target_table:
             target_table = target_table + "_delete"
-            stage_table_name = redshift_schema + "." + "stage_table_" + target_table
+            stage_table_name = redshift_schema + "." + "stage_table_" +db_name+"_"+  target_table
             redshift_target_table = redshift_schema + "." + target_table
             redshift_target_table_without_schema = target_table
         else:
             table_name = table_name + "_delete"
-            stage_table_name = redshift_schema + "." + "stage_table_" + table_name
+            stage_table_name = redshift_schema + "." + "stage_table_" +db_name+"_"+  table_name
             redshift_target_table = redshift_schema + "." + table_name
             redshift_target_table_without_schema = table_name
         cols_to_drop = ['seqnum_aws']
@@ -379,13 +379,13 @@ class CDCRedshiftSink:
                 .option("aws_iam_role", self.redshift_iam_role).mode("append").save()
 
     def _do_write(self, scf, redshift_schema, table_name, primary_key, target_table, ignore_ddl, super_columns,
-                  timestamp_columns, date_columns, skip_delete):
+                  timestamp_columns, date_columns, skip_delete , db_name):
         if target_table:
-            stage_table_name = redshift_schema + "." + "stage_table_" + target_table
+            stage_table_name = redshift_schema + "." + "stage_table_" +db_name+ "_"+target_table
             redshift_target_table = redshift_schema + "." + target_table
             redshift_target_table_without_schema = target_table
         else:
-            stage_table_name = redshift_schema + "." + "stage_table_" + table_name
+            stage_table_name = redshift_schema + "." + "stage_table_"+db_name+"_"+ table_name
             redshift_target_table = redshift_schema + "." + table_name
             redshift_target_table_without_schema = table_name
 
@@ -581,7 +581,9 @@ class CDCRedshiftSink:
             task_status["table_name"] = table_name
 
             df = data_frame.filter(gen_filter_udf(db_name, table_name, self.cdc_format)(col('value')))
+            #self.logger("df-source data: {0}".format( self._getDFExampleString(df)))
             fdf = df.select(change_cdc_format_udf(self.cdc_format)(col('value')).alias("value"))
+            #self.logger("fdf-source data: {0}".format(self._getDFExampleString(fdf)))
             if not fdf.rdd.isEmpty():
                 self.logger("the table {0}:  kafka source data: {1}".format(table_name, self._getDFExampleString(fdf)))
                 # auto gen schema
@@ -594,13 +596,13 @@ class CDCRedshiftSink:
                                                                                                     scf)))
                 if only_save_delete == "true":
                     self._do_write_delete(scf, self.redshift_schema, table_name, primary_key, target_table, ignore_ddl,
-                                          super_columns, timestamp_columns, date_columns)
+                                          super_columns, timestamp_columns, date_columns, db_name)
                 else:
                     self._do_write(scf, self.redshift_schema, table_name, primary_key, target_table, ignore_ddl,
-                                   super_columns, timestamp_columns, date_columns, skip_delete)
+                                   super_columns, timestamp_columns, date_columns, skip_delete, db_name)
                     if save_delete == "true":
                         self._do_write_delete(scf, self.redshift_schema, table_name, primary_key, target_table,
-                                              ignore_ddl, super_columns, timestamp_columns, date_columns)
+                                              ignore_ddl, super_columns, timestamp_columns, date_columns, db_name)
                 self.logger("sync the table complete: " + table_name)
                 task_status["status"] = "finished"
                 self.close_conn()
