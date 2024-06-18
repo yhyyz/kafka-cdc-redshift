@@ -253,7 +253,8 @@ class CDCRedshiftSink:
             redshift_target_table_without_schema = table_name
         cols_to_drop = ['seqnum_aws']
         md5 = hashlib.md5()
-        md5.update(table_name.encode('utf-8'))
+        sv = db_name + table_name
+        md5.update(sv.encode('utf-8'))
         # 正则匹配时，名字会有特殊字符
         table_name_md5 = md5.hexdigest()
         view_name = "kafka_source_" + table_name_md5
@@ -390,7 +391,8 @@ class CDCRedshiftSink:
             redshift_target_table_without_schema = table_name
 
         md5 = hashlib.md5()
-        md5.update(table_name.encode('utf-8'))
+        sv = db_name + table_name
+        md5.update(sv.encode('utf-8'))
         # 正则匹配时，名字会有特殊字符
         table_name_md5 = md5.hexdigest()
         view_name = "kafka_source_" + table_name_md5

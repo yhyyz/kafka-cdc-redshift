@@ -28,6 +28,7 @@ MySQL Flink CDC到Kafka有三种方式：
 ```
 
 #### update history
+* 20240619 修复对于相同mysql数据
 * 20240126 对于emr on ec2部署加入batch timeout参数，限定一个batch如果在指定时间未执行完成，抛出异常，加入
 * 20231010 支持保留cdc的delete数据,即源端表delete数据，redshift表保留删除记录,只需要在需要的表上配置skip_delete=true即可
   ```markdown
